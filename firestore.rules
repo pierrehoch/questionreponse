@@ -1,0 +1,264 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    // chartType values mirror QuestionChartType in packages/question_shared.
+    function validQuestion(data) {
+      return data.keys().hasAll([
+          'text',
+          'infoText',
+          'status',
+          'createdAt',
+          'updatedAt',
+          'createdBy',
+          'allowBlank',
+          'allowAbstention',
+          'chartType',
+          'icon'
+        ])
+        && data.keys().hasOnly([
+          'text',
+          'infoText',
+          'status',
+          'createdAt',
+          'updatedAt',
+          'createdBy',
+          'scheduledAt',
+          'publishedAt',
+          'allowBlank',
+          'allowAbstention',
+          'chartType',
+          'icon'
+        ])
+        && data.text is string
+        && data.text.size() >= 3
+        && data.text.size() <= 500
+        && (data.infoText == null || data.infoText is string)
+        && data.status in ['pending', 'scheduled']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.createdBy is string
+        && data.allowBlank is bool
+        && data.allowAbstention is bool
+        && data.chartType in [
+          'donut',
+          'bars',
+          'columns',
+          'waffle',
+          'podium',
+          'bubbles',
+          'versus'
+        ]
+        && (
+          data.icon == null
+          || (data.icon is string && data.icon.matches('^[a-z_]{1,40}$'))
+        )
+        && (
+          data.status == 'pending'
+            && (!('scheduledAt' in data) || data.scheduledAt == null)
+          || data.status == 'scheduled'
+            && data.scheduledAt is timestamp
+            && data.scheduledAt > request.time
+        )
+        && (!('publishedAt' in data) || data.publishedAt == null);
+    }
+
+    function validChoice(data) {
+      return data.keys().hasAll(['text', 'position'])
+        && data.keys().hasOnly(['text', 'position'])
+        && data.text is string
+        && data.text.size() >= 1
+        && data.text.size() <= 200
+        && data.position is int
+        && data.position >= 0;
+    }
+
+    function hasAnswered(questionId) {
+      return exists(
+        /databases/$(database)/documents/users/$(request.auth.uid)/responses/$(questionId)
+      );
+    }
+
+    // The vote badge shown on a comment must match the author's real answer
+    // (choice id, or "blank" / "abstention").
+    function authorVote(questionId) {
+      let answer = get(
+        /databases/$(database)/documents/users/$(request.auth.uid)/responses/$(questionId)
+      ).data;
+      return answer.get('choiceId', answer.type);
+    }
+
+    function validComment(data, questionId) {
+      return data.keys().hasAll(['userId', 'username', 'vote', 'text', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'username', 'vote', 'text', 'createdAt'])
+        && data.userId == request.auth.uid
+        && data.username == get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.username
+        && data.vote == authorVote(questionId)
+        && data.text is string
+        && data.text.size() >= 1
+        && data.text.size() <= 500
+        && data.text.trim().size() >= 1
+        && data.createdAt == request.time;
+    }
+
+    function validProfile(data) {
+      return data.keys().hasAll([
+          'username',
+          'normalizedUsername',
+          'email',
+          'photoUrl',
+          'country',
+          'sex',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'username',
+          'normalizedUsername',
+          'email',
+          'photoUrl',
+          'country',
+          'sex',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.username is string
+        && data.username.matches('^[A-Za-z0-9_]{3,24}$')
+        && data.normalizedUsername == data.username.lower()
+        && data.email == request.auth.token.email
+        && (data.photoUrl == null || data.photoUrl is string)
+        && data.country is string
+        && data.country.matches('^[A-Z]{2}$')
+        && data.sex in ['male', 'female', 'other']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list, delete: if false;
+
+      allow create: if isOwner(userId)
+        && validProfile(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && getAfter(
+          /databases/$(database)/documents/usernames/$(request.resource.data.normalizedUsername)
+        ).data.userId == userId;
+
+      allow update: if isOwner(userId)
+        && validProfile(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.email == resource.data.email
+        && (
+          request.resource.data.normalizedUsername == resource.data.normalizedUsername
+          || getAfter(
+            /databases/$(database)/documents/usernames/$(request.resource.data.normalizedUsername)
+          ).data.userId == userId
+        );
+
+      match /responses/{questionId} {
+        allow get, list: if isOwner(userId);
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /usernames/{username} {
+      allow get: if isSignedIn();
+      allow list: if false;
+
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasAll(['userId', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['userId', 'createdAt'])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && username == getAfter(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.normalizedUsername;
+
+      allow update: if false;
+
+      allow delete: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && username != getAfter(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.normalizedUsername;
+    }
+
+    match /questions/{questionId} {
+      allow get, list: if isSignedIn()
+        && (resource.data.status == 'published' || isAdmin());
+      allow create: if isAdmin()
+        && validQuestion(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isAdmin()
+        && resource.data.status != 'published'
+        && validQuestion(request.resource.data)
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isAdmin() && resource.data.status != 'published';
+
+      match /choices/{choiceId} {
+        allow get, list: if isSignedIn()
+          && (
+            get(
+              /databases/$(database)/documents/questions/$(questionId)
+            ).data.status == 'published'
+            || isAdmin()
+          );
+        allow create, update: if isAdmin()
+          && getAfter(
+            /databases/$(database)/documents/questions/$(questionId)
+          ).data.status != 'published'
+          && validChoice(request.resource.data);
+        allow delete: if isAdmin()
+          && get(
+            /databases/$(database)/documents/questions/$(questionId)
+          ).data.status != 'published';
+      }
+
+      // Discussion is reserved to participants so that comments never
+      // influence a vote that has not been cast yet.
+      match /comments/{commentId} {
+        allow get, list: if isSignedIn()
+          && (hasAnswered(questionId) || isAdmin());
+        allow create: if isSignedIn()
+          && hasAnswered(questionId)
+          && validComment(request.resource.data, questionId);
+        allow update: if false;
+        allow delete: if isSignedIn()
+          && (resource.data.userId == request.auth.uid || isAdmin());
+      }
+
+      match /stats/{statsId} {
+        allow get, list: if isSignedIn()
+          && exists(
+            /databases/$(database)/documents/users/$(request.auth.uid)/responses/$(questionId)
+          );
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

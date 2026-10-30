@@ -3,6 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:question_reponse/app/theme/app_theme.dart';
+import 'package:question_reponse/app/widgets/loading_button.dart';
+import 'package:question_reponse/app/widgets/notice_banner.dart';
+import 'package:question_reponse/app/widgets/section_label.dart';
+import 'package:question_reponse/app/widgets/segmented_control.dart';
 import 'package:question_reponse/core/countries/country.dart';
 import 'package:question_reponse/core/countries/country_picker.dart';
 import 'package:question_reponse/features/auth/presentation/controllers/auth_controller.dart';
@@ -10,6 +15,7 @@ import 'package:question_reponse/features/profile/domain/profile_failure.dart';
 import 'package:question_reponse/features/profile/domain/user_profile.dart';
 import 'package:question_reponse/features/profile/presentation/controllers/profile_controller.dart';
 import 'package:question_reponse/features/questions/presentation/question_page.dart';
+import 'package:question_reponse/features/questions/presentation/widgets/question_message.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -40,26 +46,32 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final profileState = ref.watch(profileProvider);
     final action = ref.watch(profileControllerProvider);
     final profile = profileState.value;
+    final email = ref.watch(authStateProvider).value?.email;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
     _initializeForm(profile);
 
     return Scaffold(
       appBar: AppBar(
         title: Text(profile == null ? 'Compléter mon profil' : 'Mon profil'),
-        actions: [
-          IconButton(
-            onPressed: action.isLoading
-                ? null
-                : ref.read(authControllerProvider.notifier).signOut,
-            icon: const Icon(Icons.logout),
-            tooltip: 'Se déconnecter',
-          ),
-        ],
       ),
       body: SafeArea(
         child: profileState.hasError
-            ? _ProfileLoadError(onRetry: () => ref.invalidate(profileProvider))
+            ? QuestionMessage(
+                icon: Icons.cloud_off_rounded,
+                message: 'Impossible de charger votre profil.',
+                onRetry: () => ref.invalidate(profileProvider),
+              )
             : SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.fromLTRB(
+                  AppTheme.pagePadding,
+                  8,
+                  AppTheme.pagePadding,
+                  24,
+                ),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 child: Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 520),
@@ -72,33 +84,40 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Center(
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                CircleAvatar(
-                                  radius: 44,
-                                  foregroundImage: _profileImage(profile),
-                                  child: Text(
-                                    _avatarLabel(profile),
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .headlineMedium,
-                                  ),
-                                ),
-                                Positioned(
-                                  right: -8,
-                                  bottom: -8,
-                                  child: IconButton.filledTonal(
-                                    tooltip: 'Choisir une photo',
-                                    onPressed: action.isLoading
-                                        ? null
-                                        : _pickPhoto,
-                                    icon: const Icon(Icons.photo_camera),
-                                  ),
-                                ),
-                              ],
+                            child: _AvatarPicker(
+                              image: _profileImage(profile),
+                              label: _avatarLabel(profile),
+                              onPressed: action.isLoading ? null : _pickPhoto,
                             ),
                           ),
+                          const SizedBox(height: 16),
+                          if (profile != null)
+                            Text(
+                              profile.username,
+                              textAlign: TextAlign.center,
+                              style: textTheme.titleLarge,
+                            ),
+                          if (email != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              email,
+                              textAlign: TextAlign.center,
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                          if (profile == null) ...[
+                            const SizedBox(height: 16),
+                            Text(
+                              'Ces informations permettent de comparer les '
+                              'résultats par pays et par sexe.',
+                              textAlign: TextAlign.center,
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 32),
                           TextFormField(
                             controller: _usernameController,
@@ -115,21 +134,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                               labelText: 'Pseudo',
                               helperText:
                                   '3 à 24 lettres, chiffres ou caractères _',
-                              prefixIcon: Icon(Icons.alternate_email),
+                              prefixIcon: Icon(Icons.alternate_email_rounded),
                             ),
                             validator: _validateUsername,
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            initialValue: ref
-                                .watch(authStateProvider)
-                                .value
-                                ?.email,
-                            enabled: false,
-                            decoration: const InputDecoration(
-                              labelText: 'Adresse e-mail',
-                              prefixIcon: Icon(Icons.email_outlined),
-                            ),
                           ),
                           const SizedBox(height: 16),
                           CountryFormField(
@@ -143,46 +150,53 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                 ? 'Sélectionnez votre pays dans la liste.'
                                 : null,
                           ),
-                          const SizedBox(height: 16),
-                          DropdownButtonFormField<UserSex>(
-                            initialValue: _sex,
-                            decoration: const InputDecoration(
-                              labelText: 'Sexe',
-                              prefixIcon: Icon(Icons.person_outline),
+                          const SizedBox(height: 24),
+                          const SectionLabel('Sexe'),
+                          const SizedBox(height: 8),
+                          SegmentedControlFormField<UserSex>(
+                            key: ValueKey(
+                              'sex-${_initializedProfileId ?? 'new'}',
                             ),
-                            items: [
+                            initialValue: _sex,
+                            enabled: !action.isLoading,
+                            segments: [
                               for (final sex in UserSex.values)
-                                DropdownMenuItem(
-                                  value: sex,
-                                  child: Text(sex.label),
-                                ),
+                                Segment(value: sex, label: sex.label),
                             ],
-                            onChanged: action.isLoading
-                                ? null
-                                : (value) => setState(() => _sex = value),
+                            onChanged: (value) => _sex = value,
                             validator: (value) => value == null
                                 ? 'Sélectionnez une valeur.'
                                 : null,
                           ),
                           if (action case AsyncError(:final error)) ...[
-                            const SizedBox(height: 16),
-                            _ProfileError(error: error),
+                            const SizedBox(height: 20),
+                            NoticeBanner(
+                              message: error is ProfileFailure
+                                  ? error.message
+                                  : 'Une erreur inattendue est survenue.',
+                            ),
                           ],
-                          const SizedBox(height: 24),
-                          FilledButton(
-                            onPressed: action.isLoading ? null : _save,
-                            child: action.isLoading
-                                ? const SizedBox.square(
-                                    dimension: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : Text(
-                                    profile == null
-                                        ? 'Créer mon profil'
-                                        : 'Enregistrer',
-                                  ),
+                          const SizedBox(height: 32),
+                          LoadingButton(
+                            label: profile == null
+                                ? 'Créer mon profil'
+                                : 'Enregistrer',
+                            loading: action.isLoading,
+                            onPressed: _save,
+                          ),
+                          const SizedBox(height: 12),
+                          TextButton.icon(
+                            onPressed: action.isLoading
+                                ? null
+                                : ref
+                                      .read(authControllerProvider.notifier)
+                                      .signOut,
+                            style: TextButton.styleFrom(
+                              foregroundColor: colorScheme.error,
+                              minimumSize: const Size.fromHeight(48),
+                            ),
+                            icon: const Icon(Icons.logout_rounded, size: 20),
+                            label: const Text('Se déconnecter'),
                           ),
                         ],
                       ),
@@ -293,38 +307,64 @@ String? _validateUsername(String? value) {
   return null;
 }
 
-class _ProfileError extends StatelessWidget {
-  const _ProfileError({required this.error});
+class _AvatarPicker extends StatelessWidget {
+  const _AvatarPicker({
+    required this.image,
+    required this.label,
+    required this.onPressed,
+  });
 
-  final Object error;
-
-  @override
-  Widget build(BuildContext context) {
-    final message = error is ProfileFailure
-        ? (error as ProfileFailure).message
-        : 'Une erreur inattendue est survenue.';
-    return Text(
-      message,
-      style: TextStyle(color: Theme.of(context).colorScheme.error),
-    );
-  }
-}
-
-class _ProfileLoadError extends StatelessWidget {
-  const _ProfileLoadError({required this.onRetry});
-
-  final VoidCallback onRetry;
+  final ImageProvider<Object>? image;
+  final String label;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('Impossible de charger votre profil.'),
-          const SizedBox(height: 12),
-          OutlinedButton(onPressed: onRetry, child: const Text('Réessayer')),
-        ],
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Tooltip(
+      message: 'Choisir une photo',
+      child: Semantics(
+        button: true,
+        label: 'Choisir une photo',
+        child: GestureDetector(
+          onTap: onPressed,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              CircleAvatar(
+                radius: 48,
+                backgroundColor: colorScheme.primaryContainer,
+                foregroundImage: image,
+                child: Text(
+                  label,
+                  style: textTheme.headlineMedium?.copyWith(
+                    color: colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ),
+              Positioned(
+                right: -2,
+                bottom: -2,
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: colorScheme.inverseSurface,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: colorScheme.surface, width: 3),
+                  ),
+                  child: Icon(
+                    Icons.photo_camera_rounded,
+                    size: 16,
+                    color: colorScheme.onInverseSurface,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

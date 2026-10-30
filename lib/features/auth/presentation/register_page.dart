@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:question_reponse/app/widgets/loading_button.dart';
 import 'package:question_reponse/features/auth/presentation/auth_validators.dart';
 import 'package:question_reponse/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:question_reponse/features/auth/presentation/widgets/auth_error_message.dart';
@@ -36,6 +37,11 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     return AuthPageScaffold(
       title: 'Créer un compte',
       subtitle: 'Votre compte est nécessaire pour participer.',
+      footer: AuthFooterLink(
+        prompt: 'Déjà inscrit ?',
+        action: 'J’ai déjà un compte',
+        onPressed: action.isLoading ? null : () => Navigator.of(context).pop(),
+      ),
       child: Form(
         key: _formKey,
         onChanged: ref.read(authControllerProvider.notifier).clearError,
@@ -50,11 +56,11 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
                 labelText: 'Adresse e-mail',
-                prefixIcon: Icon(Icons.email_outlined),
+                prefixIcon: Icon(Icons.mail_outline_rounded),
               ),
               validator: validateEmail,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             TextFormField(
               controller: _passwordController,
               enabled: !action.isLoading,
@@ -64,14 +70,14 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
               decoration: InputDecoration(
                 labelText: 'Mot de passe',
                 helperText: '6 caractères minimum',
-                prefixIcon: const Icon(Icons.lock_outline),
+                prefixIcon: const Icon(Icons.lock_outline_rounded),
                 suffixIcon: IconButton(
                   onPressed: () =>
                       setState(() => _passwordVisible = !_passwordVisible),
                   icon: Icon(
                     _passwordVisible
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
+                        ? Icons.visibility_off_rounded
+                        : Icons.visibility_rounded,
                   ),
                   tooltip: _passwordVisible
                       ? 'Masquer le mot de passe'
@@ -82,7 +88,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                   ? 'Utilisez au moins 6 caractères.'
                   : null,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             TextFormField(
               controller: _confirmationController,
               enabled: !action.isLoading,
@@ -90,7 +96,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
               textInputAction: TextInputAction.done,
               decoration: const InputDecoration(
                 labelText: 'Confirmer le mot de passe',
-                prefixIcon: Icon(Icons.lock_outline),
+                prefixIcon: Icon(Icons.lock_outline_rounded),
               ),
               validator: (value) => value != _passwordController.text
                   ? 'Les mots de passe ne correspondent pas.'
@@ -102,20 +108,10 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
               AuthErrorMessage(error: error),
             ],
             const SizedBox(height: 24),
-            FilledButton(
-              onPressed: action.isLoading ? null : _submit,
-              child: action.isLoading
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Créer mon compte'),
-            ),
-            TextButton(
-              onPressed: action.isLoading
-                  ? null
-                  : () => Navigator.of(context).pop(),
-              child: const Text('J’ai déjà un compte'),
+            LoadingButton(
+              label: 'Créer mon compte',
+              loading: action.isLoading,
+              onPressed: _submit,
             ),
           ],
         ),

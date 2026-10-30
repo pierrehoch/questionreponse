@@ -6,6 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:question_reponse/features/auth/domain/auth_repository.dart';
 import 'package:question_reponse/features/auth/domain/auth_user.dart';
 import 'package:question_reponse/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:question_reponse/features/comments/domain/comment.dart';
+import 'package:question_reponse/features/comments/domain/comment_repository.dart';
+import 'package:question_reponse/features/comments/presentation/controllers/comment_providers.dart';
+import 'package:question_reponse/features/profile/presentation/controllers/profile_controller.dart';
 import 'package:question_reponse/features/questions/domain/question.dart';
 import 'package:question_reponse/features/questions/domain/question_choice.dart';
 import 'package:question_reponse/features/questions/domain/question_repository.dart';
@@ -97,7 +101,8 @@ void main() {
     expect(find.text('Python'), findsOneWidget);
     expect(find.text('Dart'), findsOneWidget);
     expect(find.byIcon(QuestionIcons.byKey('vote')!.icon), findsOneWidget);
-    expect(find.textContaining('Publiée le'), findsOneWidget);
+    expect(find.text('1er janvier 2026'), findsOneWidget);
+    expect(find.textContaining('Publiée le'), findsNothing);
     expect(find.byTooltip('Informations'), findsOneWidget);
     expect(find.text('Vote blanc'), findsNothing);
     expect(find.text('Abstention'), findsNothing);
@@ -156,6 +161,126 @@ void main() {
     expect(find.text(question.text), findsOneWidget);
     expect(find.byTooltip('Questions précédentes'), findsOneWidget);
     expect(find.byTooltip('Mon profil'), findsOneWidget);
+  });
+
+  testWidgets('swipes right to reach older questions', (tester) async {
+    final olderQuestion = Question(
+      id: 'question-0',
+      text: 'Quelle saison préférez-vous ?',
+      status: QuestionStatus.published,
+      createdAt: DateTime(2025),
+      updatedAt: DateTime(2025),
+      publishedAt: DateTime(2025, 6, 2),
+      createdBy: 'admin-1',
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(_NoopAuthRepository()),
+          questionRepositoryProvider.overrideWithValue(
+            // Newest first, as published.
+            _QuestionTestRepository(questions: [question, olderQuestion]),
+          ),
+          responseRepositoryProvider.overrideWithValue(
+            _NoopResponseRepository(),
+          ),
+        ],
+        child: const MaterialApp(home: QuestionPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(question.text), findsOneWidget);
+    expect(find.bySemanticsLabel('Question 2 sur 2'), findsOneWidget);
+
+    await tester.fling(find.byType(PageView), const Offset(500, 0), 1500);
+    await tester.pumpAndSettle();
+
+    expect(find.text(olderQuestion.text), findsOneWidget);
+    expect(find.text(question.text), findsNothing);
+    expect(find.text('2 juin 2025'), findsOneWidget);
+    expect(find.bySemanticsLabel('Question 1 sur 2'), findsOneWidget);
+
+    // Nothing newer than the latest question.
+    await tester.fling(find.byType(PageView), const Offset(-500, 0), 1500);
+    await tester.pumpAndSettle();
+    await tester.fling(find.byType(PageView), const Offset(-500, 0), 1500);
+    await tester.pumpAndSettle();
+
+    expect(find.text(question.text), findsOneWidget);
+  });
+
+  testWidgets('opens the discussion in a sheet over the results', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(_SignedInAuthRepository()),
+          profileProvider.overrideWith((ref) => Stream.value(null)),
+          questionRepositoryProvider.overrideWithValue(
+            _QuestionTestRepository(
+              questions: [question],
+              choices: const [
+                QuestionChoice(id: 'python', text: 'Python', position: 0),
+                QuestionChoice(id: 'dart', text: 'Dart', position: 1),
+              ],
+            ),
+          ),
+          responseRepositoryProvider.overrideWithValue(
+            _NoopResponseRepository(
+              responses: [
+                UserResponse(
+                  questionId: question.id,
+                  type: ResponseType.choice,
+                  choiceId: 'dart',
+                  country: 'FR',
+                  sex: 'other',
+                  createdAt: DateTime(2026),
+                ),
+              ],
+            ),
+          ),
+          statisticsRepositoryProvider.overrideWithValue(
+            _SilentStatisticsRepository(
+              summary: QuestionStatistics(
+                totalResponses: 4,
+                choiceCounts: const {'python': 1, 'dart': 3},
+                blankCount: 0,
+                abstentionCount: 0,
+                updatedAt: DateTime(2026),
+              ),
+            ),
+          ),
+          commentRepositoryProvider.overrideWithValue(
+            _StaticCommentRepository([
+              Comment(
+                id: 'comment-1',
+                userId: 'user-2',
+                username: 'Alice',
+                vote: 'python',
+                text: 'Python reste imbattable.',
+                createdAt: DateTime(2026),
+              ),
+            ]),
+          ),
+        ],
+        child: const MaterialApp(home: QuestionPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Résultats'), findsOneWidget);
+    expect(find.text('Votre réponse'), findsNothing);
+    expect(find.text('Alice : Python reste imbattable.'), findsOneWidget);
+    expect(find.text('Python reste imbattable.'), findsNothing);
+
+    await tester.tap(find.text('Alice : Python reste imbattable.'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(find.text('Python reste imbattable.'), findsOneWidget);
   });
 
   testWidgets('distinguishes answered questions in the history', (
@@ -294,11 +419,15 @@ void main() {
 }
 
 class _SilentStatisticsRepository implements StatisticsRepository {
+  _SilentStatisticsRepository({this.summary});
+
+  /// Emitted once when set; the summary stream stays silent otherwise.
+  final QuestionStatistics? summary;
   final _summaries = StreamController<QuestionStatistics?>();
 
   @override
   Stream<QuestionStatistics?> watchSummary(String questionId) =>
-      _summaries.stream;
+      summary == null ? _summaries.stream : Stream.value(summary);
 
   @override
   Future<QuestionStatistics> getFiltered({
@@ -338,7 +467,38 @@ class _NoopResponseRepository implements ResponseRepository {
   Stream<UserResponse?> watchResponse({
     required String userId,
     required String questionId,
-  }) => Stream.value(null);
+  }) => Stream.value(
+    responses
+        .where((response) => response.questionId == questionId)
+        .firstOrNull,
+  );
+}
+
+class _StaticCommentRepository implements CommentRepository {
+  _StaticCommentRepository(this.comments);
+
+  final List<Comment> comments;
+
+  @override
+  Stream<List<Comment>> watchComments(
+    String questionId, {
+    required int limit,
+  }) => Stream.value(comments);
+
+  @override
+  Future<void> add({
+    required String questionId,
+    required String userId,
+    required String username,
+    required String vote,
+    required String text,
+  }) async {}
+
+  @override
+  Future<void> delete({
+    required String questionId,
+    required String commentId,
+  }) async {}
 }
 
 class _QuestionTestRepository implements QuestionRepository {
@@ -364,7 +524,9 @@ class _QuestionTestRepository implements QuestionRepository {
       Stream.value(questions.firstOrNull);
 
   @override
-  Stream<Question?> watchQuestion(String questionId) => Stream.value(question);
+  Stream<Question?> watchQuestion(String questionId) => Stream.value(
+    question ?? questions.where((item) => item.id == questionId).firstOrNull,
+  );
 }
 
 class _NoopAuthRepository implements AuthRepository {

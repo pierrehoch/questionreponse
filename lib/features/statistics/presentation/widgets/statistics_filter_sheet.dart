@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:question_reponse/app/theme/app_theme.dart';
+import 'package:question_reponse/app/widgets/section_label.dart';
+import 'package:question_reponse/app/widgets/segmented_control.dart';
 import 'package:question_reponse/core/countries/country.dart';
 import 'package:question_reponse/core/countries/country_picker.dart';
 import 'package:question_reponse/features/profile/domain/user_profile.dart';
@@ -58,9 +61,9 @@ class _StatisticsFilterSheetState extends State<StatisticsFilterSheet> {
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        24,
+        AppTheme.pagePadding,
         0,
-        24,
+        AppTheme.pagePadding,
         16 + MediaQuery.viewInsetsOf(context).bottom,
       ),
       child: Column(
@@ -76,21 +79,19 @@ class _StatisticsFilterSheetState extends State<StatisticsFilterSheet> {
             ),
           ),
           const SizedBox(height: 24),
-          _SectionTitle(icon: Icons.wc_rounded, label: 'Sexe'),
+          const SectionLabel('Sexe'),
           const SizedBox(height: 8),
-          SegmentedButton<String>(
-            showSelectedIcon: false,
+          SegmentedControl<String>(
             segments: [
-              const ButtonSegment(value: _allSexes, label: Text('Tous')),
+              const Segment(value: _allSexes, label: 'Tous'),
               for (final sex in UserSex.values)
-                ButtonSegment(value: sex.value, label: Text(sex.label)),
+                Segment(value: sex.value, label: sex.label),
             ],
-            selected: {_sex},
-            onSelectionChanged: (selection) =>
-                setState(() => _sex = selection.single),
+            selected: _sex,
+            onChanged: (value) => setState(() => _sex = value),
           ),
           const SizedBox(height: 24),
-          _SectionTitle(icon: Icons.public_rounded, label: 'Pays'),
+          const SectionLabel('Pays'),
           const SizedBox(height: 8),
           _CountryTile(
             country: _country,
@@ -101,9 +102,9 @@ class _StatisticsFilterSheetState extends State<StatisticsFilterSheet> {
           ),
           if (userCountry != null && userCountry != _country)
             Align(
-              alignment: Alignment.centerLeft,
+              alignment: AlignmentDirectional.centerStart,
               child: Padding(
-                padding: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.only(top: 10),
                 child: ActionChip(
                   avatar: Text(userCountry.flag),
                   label: Text('Mon pays · ${userCountry.name}'),
@@ -111,29 +112,29 @@ class _StatisticsFilterSheetState extends State<StatisticsFilterSheet> {
                 ),
               ),
             ),
-          const SizedBox(height: 28),
-          OverflowBar(
-            alignment: MainAxisAlignment.spaceBetween,
-            overflowAlignment: OverflowBarAlignment.end,
-            spacing: 8,
-            overflowSpacing: 8,
+          const SizedBox(height: 32),
+          Row(
             children: [
-              TextButton.icon(
-                onPressed: _hasSelection || widget.initialFilter != null
-                    ? () => Navigator.pop(context, StatisticsFilter())
-                    : null,
-                icon: const Icon(Icons.restart_alt_rounded),
-                label: const Text('Réinitialiser'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(
-                  context,
-                  StatisticsFilter(
-                    country: _country?.code,
-                    sex: _sex == _allSexes ? null : _sex,
-                  ),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _hasSelection || widget.initialFilter != null
+                      ? () => Navigator.pop(context, StatisticsFilter())
+                      : null,
+                  child: const Text('Réinitialiser'),
                 ),
-                child: const Text('Appliquer'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(
+                    context,
+                    StatisticsFilter(
+                      country: _country?.code,
+                      sex: _sex == _allSexes ? null : _sex,
+                    ),
+                  ),
+                  child: const Text('Appliquer'),
+                ),
               ),
             ],
           ),
@@ -151,25 +152,6 @@ class _StatisticsFilterSheetState extends State<StatisticsFilterSheet> {
     if (picked != null && mounted) {
       setState(() => _country = picked);
     }
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: theme.colorScheme.primary),
-        const SizedBox(width: 8),
-        Text(label, style: theme.textTheme.titleSmall),
-      ],
-    );
   }
 }
 
@@ -191,21 +173,27 @@ class _CountryTile extends StatelessWidget {
     final country = this.country;
 
     return Material(
-      color: colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
+      color: colorScheme.surfaceContainer,
+      borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
       clipBehavior: Clip.antiAlias,
       child: ListTile(
         onTap: onTap,
+        contentPadding: const EdgeInsets.fromLTRB(16, 2, 8, 2),
         leading: country == null
-            ? Icon(Icons.language_rounded, color: colorScheme.onSurfaceVariant)
-            : Text(country.flag, style: const TextStyle(fontSize: 26)),
+            ? Icon(Icons.public_rounded, color: colorScheme.onSurfaceVariant)
+            : Text(country.flag, style: const TextStyle(fontSize: 24)),
         title: Text(
           country?.name ?? 'Tous les pays',
           style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
         subtitle: country == null
-            ? const Text('Touchez pour choisir un pays')
-            : Text(country.code),
+            ? Text(
+                'Touchez pour choisir un pays',
+                style: textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              )
+            : null,
         trailing: onClear == null
             ? const Icon(Icons.chevron_right_rounded)
             : IconButton(

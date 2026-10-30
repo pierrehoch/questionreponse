@@ -22,6 +22,26 @@ Connecter un appareil ou démarrer un simulateur, puis lancer :
 flutter run
 ```
 
+Android utilise Kotlin intégré à AGP 9 (`android.builtInKotlin=true`).
+Flutter 3.47 peut néanmoins signaler les plugins Firebase comme utilisant KGP :
+sa détection repère leurs déclarations conditionnelles pour les anciennes
+versions d'AGP, même lorsqu'elles ne sont pas exécutées. Ne pas modifier le
+cache des paquets pour masquer cet avertissement.
+
+Pour le débogage sans fil sur iOS, autoriser l'accès au réseau local lorsque
+iOS le demande. Si l'accès a été refusé, l'activer dans
+**Réglages > Confidentialité et sécurité > Réseau local > Question Reponse**,
+ou connecter l'appareil en USB. Les déclarations Bonjour nécessaires au service
+de débogage Flutter sont déjà présentes dans `ios/Runner/Info.plist`.
+
+En développement, App Check utilise le fournisseur de jeton de débogage. Dans
+la console Firebase, vérifier que l'application iOS correspondante est
+enregistrée dans App Check, puis ajouter le jeton affiché par l'appareil dans
+ses jetons de débogage. Un jeton de débogage est un secret : ne pas le publier
+ni le committer, et révoquer tout jeton qui a été exposé. En production, la
+fonctionnalité utilise App Attest. Les fonctions callable continuent d'exiger
+App Check dans les deux environnements.
+
 ## Production
 
 ```sh

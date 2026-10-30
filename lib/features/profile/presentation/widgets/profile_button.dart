@@ -19,10 +19,15 @@ class ProfileButton extends ConsumerWidget {
         tooltip: 'Mon profil',
         onPressed: () => context.push(ProfilePage.routePath),
         icon: CircleAvatar(
-          radius: 18,
+          radius: 17,
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
           foregroundImage: photoUrl == null ? null : NetworkImage(photoUrl),
           child: Text(
             username.isEmpty ? '?' : username.substring(0, 1).toUpperCase(),
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ),

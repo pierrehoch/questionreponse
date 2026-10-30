@@ -27,10 +27,31 @@ class ParticipationForm extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isBusy = pendingId != null;
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Row(
+          children: [
+            Icon(
+              Icons.touch_app_outlined,
+              size: 16,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'Touchez une réponse pour voter. Votre choix est définitif.',
+                style: textTheme.labelMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         for (final (index, choice) in choices.indexed) ...[
           _ChoiceCard(
             label: choice.text,
@@ -42,10 +63,10 @@ class ParticipationForm extends StatelessWidget {
                 ? null
                 : () => onSubmit(ResponseSubmission.choice(choice.id)),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
         ],
         if (allowBlank || allowAbstention) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Row(
             children: [
               if (allowBlank)
@@ -54,18 +75,20 @@ class ParticipationForm extends StatelessWidget {
                     label: 'Vote blanc',
                     icon: Icons.crop_square_rounded,
                     pending: pendingId == ResponseType.blank.name,
+                    dimmed: isBusy && pendingId != ResponseType.blank.name,
                     onPressed: isBusy
                         ? null
                         : () => onSubmit(const ResponseSubmission.blank()),
                   ),
                 ),
-              if (allowBlank && allowAbstention) const SizedBox(width: 12),
+              if (allowBlank && allowAbstention) const SizedBox(width: 10),
               if (allowAbstention)
                 Expanded(
                   child: _AlternativeButton(
                     label: 'Abstention',
                     icon: Icons.do_not_disturb_on_outlined,
                     pending: pendingId == ResponseType.abstention.name,
+                    dimmed: isBusy && pendingId != ResponseType.abstention.name,
                     onPressed: isBusy
                         ? null
                         : () => onSubmit(const ResponseSubmission.abstention()),
@@ -96,7 +119,7 @@ class _ChoiceCard extends StatelessWidget {
   final bool dimmed;
   final VoidCallback? onTap;
 
-  static const _duration = Duration(milliseconds: 300);
+  static const _duration = Duration(milliseconds: 280);
 
   @override
   Widget build(BuildContext context) {
@@ -105,39 +128,41 @@ class _ChoiceCard extends StatelessWidget {
     final foreground = selected ? Colors.white : colorScheme.onSurface;
 
     return AnimatedOpacity(
-      opacity: dimmed ? 0.35 : 1,
+      opacity: dimmed ? 0.4 : 1,
       duration: _duration,
-      child: AnimatedScale(
-        scale: selected ? 1.03 : 1,
+      child: AnimatedContainer(
         duration: _duration,
-        curve: Curves.easeOutBack,
-        child: AnimatedContainer(
-          duration: _duration,
-          curve: Curves.easeOutCubic,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: selected ? color : colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Material(
-            type: MaterialType.transparency,
-            child: InkWell(
-              onTap: onTap,
-              splashColor: color.withValues(alpha: 0.2),
-              highlightColor: color.withValues(alpha: 0.08),
+        curve: Curves.easeOutCubic,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: selected ? color : colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(AppTheme.radiusMedium + 2),
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            splashColor: color.withValues(alpha: 0.18),
+            highlightColor: color.withValues(alpha: 0.08),
+            hoverColor: color.withValues(alpha: 0.06),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 64),
               child: Padding(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
                 child: Row(
                   children: [
                     AnimatedContainer(
                       duration: _duration,
-                      width: 40,
-                      height: 40,
+                      width: 36,
+                      height: 36,
                       decoration: BoxDecoration(
                         color: selected
-                            ? Colors.white.withValues(alpha: 0.25)
-                            : color.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(12),
+                            ? Colors.white.withValues(alpha: 0.22)
+                            : color.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       alignment: Alignment.center,
                       child: AnimatedSwitcher(
@@ -148,37 +173,47 @@ class _ChoiceCard extends StatelessWidget {
                             ? const Icon(
                                 Icons.check_rounded,
                                 key: ValueKey('check'),
+                                size: 20,
                                 color: Colors.white,
                               )
                             : Text(
                                 badge,
                                 key: const ValueKey('badge'),
-                                style: textTheme.titleMedium?.copyWith(
+                                style: textTheme.titleSmall?.copyWith(
                                   color: color,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: AnimatedDefaultTextStyle(
                         duration: _duration,
                         style: textTheme.bodyLarge!.copyWith(
                           color: foreground,
                           fontWeight: FontWeight.w600,
+                          height: 1.3,
                         ),
                         child: Text(label),
                       ),
                     ),
-                    if (selected)
-                      const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      ),
+                    const SizedBox(width: 8),
+                    SizedBox.square(
+                      dimension: 20,
+                      child: selected
+                          ? const CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              color: Colors.white,
+                            )
+                          : Icon(
+                              Icons.chevron_right_rounded,
+                              size: 20,
+                              color: colorScheme.onSurfaceVariant.withValues(
+                                alpha: 0.6,
+                              ),
+                            ),
+                    ),
                   ],
                 ),
               ),
@@ -195,25 +230,39 @@ class _AlternativeButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.pending,
+    required this.dimmed,
     required this.onPressed,
   });
 
   final String label;
   final IconData icon;
   final bool pending;
+  final bool dimmed;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: onPressed,
-      icon: pending
-          ? const SizedBox.square(
-              dimension: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(icon, size: 18),
-      label: Text(label),
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return AnimatedOpacity(
+      opacity: dimmed ? 0.4 : 1,
+      duration: const Duration(milliseconds: 280),
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 48),
+          foregroundColor: colorScheme.onSurfaceVariant,
+          disabledForegroundColor: colorScheme.onSurfaceVariant,
+          side: BorderSide(color: colorScheme.outlineVariant),
+        ),
+        icon: pending
+            ? const SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(icon, size: 18),
+        label: Text(label),
+      ),
     );
   }
 }

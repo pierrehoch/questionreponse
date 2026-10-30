@@ -3,6 +3,8 @@ import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:question_reponse/core/formatting/number_formatting.dart';
 import 'package:question_shared/question_shared.dart';
 
 class StatisticEntry {
@@ -52,6 +54,7 @@ class StatisticsChart extends StatefulWidget {
     this.chartType = QuestionChartType.donut,
     this.highlightedId,
     this.animateVote = false,
+    this.expand = false,
     super.key,
   });
 
@@ -59,6 +62,10 @@ class StatisticsChart extends StatefulWidget {
   final QuestionChartType chartType;
   final String? highlightedId;
   final bool animateVote;
+
+  /// Lets the figure fill the free height (which must be bounded), shrinking
+  /// it on short screens and hiding it when there is no room left.
+  final bool expand;
 
   @override
   State<StatisticsChart> createState() => _StatisticsChartState();
@@ -167,55 +174,183 @@ class _StatisticsChartState extends State<StatisticsChart>
         final pulse = math.sin(math.pi * _impact.value);
         final participants = total.round();
         final type = widget.chartType;
-        final compactLegend =
-            type != QuestionChartType.donut && type != QuestionChartType.bars;
+        final expand = widget.expand;
+        final participantsLabel = _ParticipantsLabel(
+          participants: participants,
+        );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (type != QuestionChartType.donut)
-              _ParticipantsLabel(participants: participants),
+            if (type != QuestionChartType.donut) participantsLabel,
             switch (type) {
-              QuestionChartType.donut => _DonutFigure(
-                slices: slices,
-                participants: participants,
-                pulse: pulse,
+              QuestionChartType.donut => _FigureSlot(
+                expand: expand,
+                height: 200,
+                reserved: 40,
+                minHeight: 64,
+                // The count sits inside the donut, keep it when it is hidden.
+                fallback: participantsLabel,
+                child: _DonutFigure(
+                  slices: slices,
+                  participants: participants,
+                  pulse: pulse,
+                ),
               ),
               QuestionChartType.bars => const SizedBox.shrink(),
-              QuestionChartType.columns => _ColumnsFigure(
-                slices: slices,
-                pulse: pulse,
+              QuestionChartType.columns => _FigureSlot(
+                expand: expand,
+                height: 220,
+                child: _ColumnsFigure(slices: slices, pulse: pulse),
               ),
-              QuestionChartType.waffle => _WaffleFigure(
-                slices: slices,
-                pulse: pulse,
+              QuestionChartType.waffle => _FigureSlot(
+                expand: expand,
+                height: 220,
+                child: _WaffleFigure(slices: slices, pulse: pulse),
               ),
-              QuestionChartType.podium => _PodiumFigure(
-                slices: slices,
-                pulse: pulse,
+              QuestionChartType.podium => _FigureSlot(
+                expand: expand,
+                height: 230,
+                minHeight: 90,
+                child: _PodiumFigure(slices: slices, pulse: pulse),
               ),
-              QuestionChartType.bubbles => _BubblesFigure(
-                slices: slices,
-                pulse: pulse,
+              QuestionChartType.bubbles => _FigureSlot(
+                expand: expand,
+                height: 200,
+                child: _BubblesFigure(slices: slices, pulse: pulse),
               ),
-              QuestionChartType.versus => _VersusFigure(
-                slices: slices,
-                pulse: pulse,
-              ),
+              QuestionChartType.versus =>
+                expand
+                    ? Expanded(
+                        child: Center(
+                          child: _VersusFigure(slices: slices, pulse: pulse),
+                        ),
+                      )
+                    : _VersusFigure(slices: slices, pulse: pulse),
             },
-            SizedBox(height: type == QuestionChartType.bars ? 12 : 28),
+            SizedBox(
+              height: type == QuestionChartType.bars
+                  ? 4
+                  : expand
+                  ? 16
+                  : 28,
+            ),
             for (final slice in slices)
               _StatisticBar(
                 slice: slice,
                 impact: _impact.value,
-                compact: compactLegend,
-                thick: type == QuestionChartType.bars,
+                filled: type == QuestionChartType.bars,
               ),
+            if (expand && type == QuestionChartType.bars) const Spacer(),
           ],
         );
       },
     );
   }
+}
+
+/// Hosts a figure that fills whatever box it is given.
+///
+/// Without [expand] the figure gets a fixed [height]. With [expand] it takes
+/// the free height of the enclosing column, up to [maxHeight]; below
+/// [minHeight] there is no room for a readable figure and [fallback] is shown
+/// instead. Only [reserved] counts towards the column's intrinsic height so
+/// the page can be sized to fit the screen.
+class _FigureSlot extends StatelessWidget {
+  const _FigureSlot({
+    required this.expand,
+    required this.height,
+    required this.child,
+    this.reserved = 0,
+    this.minHeight = 110,
+    this.fallback,
+  });
+
+  final bool expand;
+  final double height;
+  final double reserved;
+  final double minHeight;
+  final Widget? fallback;
+  final Widget child;
+
+  static const maxHeight = 260.0;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!expand) {
+      return SizedBox(height: height, child: child);
+    }
+    return Expanded(
+      child: _ReservedHeight(
+        height: reserved,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxHeight < minHeight) {
+              final fallback = this.fallback;
+              return fallback != null && constraints.maxHeight >= reserved
+                  ? Center(child: fallback)
+                  : const SizedBox.shrink();
+            }
+            return Center(
+              child: SizedBox(
+                height: math.min(constraints.maxHeight, maxHeight),
+                width: double.infinity,
+                child: child,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Reports a fixed intrinsic height whatever its child, which lets an
+/// [IntrinsicHeight] ancestor size a page without measuring the figure.
+class _ReservedHeight extends SingleChildRenderObjectWidget {
+  const _ReservedHeight({required this.height, super.child});
+
+  final double height;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderReservedHeight(height);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderReservedHeight renderObject,
+  ) {
+    renderObject.reserved = height;
+  }
+}
+
+class _RenderReservedHeight extends RenderProxyBox {
+  _RenderReservedHeight(this._reserved);
+
+  double _reserved;
+
+  set reserved(double value) {
+    if (value != _reserved) {
+      _reserved = value;
+      markNeedsLayout();
+    }
+  }
+
+  @override
+  double computeMinIntrinsicHeight(double width) => _reserved;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => _reserved;
+
+  @override
+  double computeMinIntrinsicWidth(double height) => 0;
+
+  @override
+  double computeMaxIntrinsicWidth(double height) => 0;
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) => constraints.biggest;
 }
 
 class _ParticipantsLabel extends StatelessWidget {
@@ -238,7 +373,7 @@ class _ParticipantsLabel extends StatelessWidget {
             color: colorScheme.onSurfaceVariant,
           ),
           const SizedBox(width: 6),
-          Text('$participants', style: textTheme.titleMedium),
+          Text(formatCount(participants), style: textTheme.titleMedium),
           const SizedBox(width: 4),
           Text(
             participants > 1 ? 'participants' : 'participant',
@@ -267,38 +402,68 @@ class _DonutFigure extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    return Center(
-      child: SizedBox.square(
-        dimension: 196,
-        child: CustomPaint(
-          painter: _DonutPainter(
-            segments: [
-              for (final slice in slices)
-                (
-                  fraction: slice.fraction,
-                  color: slice.color,
-                  highlighted: slice.highlighted,
-                ),
-            ],
-            trackColor: colorScheme.surfaceContainerHighest,
-            pulse: pulse,
+    final painter = _DonutPainter(
+      segments: [
+        for (final slice in slices)
+          (
+            fraction: slice.fraction,
+            color: slice.color,
+            highlighted: slice.highlighted,
           ),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('$participants', style: textTheme.headlineMedium),
-                Text(
-                  participants > 1 ? 'participants' : 'participant',
-                  style: textTheme.labelMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
+      ],
+      trackColor: colorScheme.surfaceContainerHigh,
+      pulse: pulse,
+    );
+    final count = Text(
+      formatCount(participants),
+      style: textTheme.headlineMedium,
+    );
+    final label = Text(
+      participants > 1 ? 'participants' : 'participant',
+      style: textTheme.labelMedium?.copyWith(
+        color: colorScheme.onSurfaceVariant,
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Too small to hold the count: put it beside the ring.
+        if (constraints.maxHeight < 150) {
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox.square(
+                dimension: constraints.maxHeight,
+                child: CustomPaint(painter: painter),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [count, label],
+              ),
+            ],
+          );
+        }
+        return Center(
+          child: AspectRatio(
+            aspectRatio: 1,
+            child: CustomPaint(
+              painter: painter,
+              child: Padding(
+                padding: const EdgeInsets.all(36),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [count, label],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -319,59 +484,56 @@ class _ColumnsFigure extends StatelessWidget {
       (max, slice) => math.max(max, slice.fraction),
     );
 
-    return SizedBox(
-      height: 220,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (final slice in slices)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Column(
-                  children: [
-                    Text(
-                      slice.percent,
-                      style: textTheme.labelLarge?.copyWith(
-                        fontWeight: slice.highlighted
-                            ? FontWeight.w800
-                            : FontWeight.w600,
-                      ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final slice in slices)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Column(
+                children: [
+                  Text(
+                    slice.percent,
+                    style: textTheme.labelLarge?.copyWith(
+                      fontWeight: slice.highlighted
+                          ? FontWeight.w800
+                          : FontWeight.w600,
                     ),
-                    const SizedBox(height: 6),
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.bottomCenter,
-                        child: FractionallySizedBox(
-                          heightFactor: maxFraction == 0
-                              ? 0.04
-                              : (0.04 + 0.96 * slice.fraction / maxFraction)
-                                    .clamp(0.04, 1.0),
-                          widthFactor: slice.highlighted
-                              ? 0.85 + 0.15 * pulse
-                              : 0.7,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: slice.fraction == 0
-                                  ? colorScheme.surfaceContainerHighest
-                                  : slice.color,
-                              borderRadius: const BorderRadius.vertical(
-                                top: Radius.circular(12),
-                                bottom: Radius.circular(4),
-                              ),
+                  ),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: FractionallySizedBox(
+                        heightFactor: maxFraction == 0
+                            ? 0.04
+                            : (0.04 + 0.96 * slice.fraction / maxFraction)
+                                  .clamp(0.04, 1.0),
+                        widthFactor: slice.highlighted
+                            ? 0.85 + 0.15 * pulse
+                            : 0.7,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: slice.fraction == 0
+                                ? colorScheme.surfaceContainerHigh
+                                : slice.color,
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(12),
+                              bottom: Radius.circular(4),
                             ),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    _Badge(slice: slice),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 8),
+                  _Badge(slice: slice),
+                ],
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }
@@ -387,8 +549,8 @@ class _WaffleFigure extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Center(
-      child: SizedBox.square(
-        dimension: 220,
+      child: AspectRatio(
+        aspectRatio: 1,
         child: CustomPaint(
           painter: _WafflePainter(
             segments: [
@@ -399,7 +561,7 @@ class _WaffleFigure extends StatelessWidget {
                   highlighted: slice.highlighted,
                 ),
             ],
-            trackColor: colorScheme.surfaceContainerHighest,
+            trackColor: colorScheme.surfaceContainerHigh,
             pulse: pulse,
           ),
         ),
@@ -431,75 +593,95 @@ class _PodiumFigure extends StatelessWidget {
       2 => [1, 0],
       _ => [1, 0, 2],
     };
-    const heights = [150.0, 105.0, 75.0];
-
-    return SizedBox(
-      height: 230,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (final rank in order)
-            Expanded(
-              flex: rank == 0 ? 5 : 4,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    _Medal(rank: rank),
-                    const SizedBox(height: 6),
-                    Text(
-                      top[rank].percent,
-                      style: textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Room left once the medal and the percentage are laid out.
+        final tallest = (constraints.maxHeight - 40).clamp(24.0, 180.0);
+        final heights = [tallest, tallest * 0.72, tallest * 0.55];
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            for (final rank in order)
+              Expanded(
+                flex: rank == 0 ? 5 : 4,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _Medal(rank: rank),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              top[rank].percent,
+                              maxLines: 1,
+                              style: textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      height:
-                          heights[rank] +
-                          (top[rank].highlighted ? 6 * pulse : 0),
-                      decoration: BoxDecoration(
-                        color: top[rank].fraction == 0
-                            ? colorScheme.surfaceContainerHighest
-                            : top[rank].color,
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(14),
-                        ),
-                        boxShadow: top[rank].highlighted
-                            ? [
-                                BoxShadow(
-                                  color: top[rank].color.withValues(
-                                    alpha: 0.35 + 0.3 * pulse,
+                      const SizedBox(height: 8),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        height:
+                            heights[rank] +
+                            (top[rank].highlighted ? 6 * pulse : 0),
+                        decoration: BoxDecoration(
+                          color: top[rank].fraction == 0
+                              ? colorScheme.surfaceContainerHigh
+                              : top[rank].color,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(14),
+                          ),
+                          boxShadow: top[rank].highlighted
+                              ? [
+                                  BoxShadow(
+                                    color: top[rank].color.withValues(
+                                      alpha: 0.35 + 0.3 * pulse,
+                                    ),
+                                    blurRadius: 12 + 12 * pulse,
                                   ),
-                                  blurRadius: 12 + 12 * pulse,
-                                ),
-                              ]
-                            : null,
-                      ),
-                      alignment: Alignment.topCenter,
-                      padding: const EdgeInsets.all(8),
-                      child: Text(
-                        top[rank].entry.label,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: textTheme.labelMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
+                                ]
+                              : null,
+                        ),
+                        alignment: Alignment.topCenter,
+                        padding: const EdgeInsets.all(8),
+                        child: _podiumLabel(
+                          top[rank].entry.label,
+                          lines: ((heights[rank] - 16) / 18).floor(),
+                          style: textTheme.labelMedium?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 }
+
+/// The legend names every answer: short blocks simply drop it.
+Widget? _podiumLabel(String label, {required int lines, TextStyle? style}) =>
+    lines < 1
+    ? null
+    : Text(
+        label,
+        maxLines: math.min(lines, 2),
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+        style: style,
+      );
 
 /// Gold, silver or bronze disc with the rank number (emoji-free so it
 /// renders identically on every platform).
@@ -516,7 +698,7 @@ class _Medal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = rank == 0 ? 34.0 : 28.0;
+    final size = rank == 0 ? 28.0 : 24.0;
     final color = _colors[rank];
     return Container(
       width: size,
@@ -542,7 +724,7 @@ class _Medal extends StatelessWidget {
         style: TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.w900,
-          fontSize: rank == 0 ? 16 : 13,
+          fontSize: rank == 0 ? 14 : 12,
         ),
       ),
     );
@@ -560,13 +742,12 @@ class _BubblesFigure extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    return SizedBox(
-      height: 200,
+    return SizedBox.expand(
       child: CustomPaint(
         painter: _BubblesPainter(
           slices: slices,
           pulse: pulse,
-          trackColor: colorScheme.surfaceContainerHighest,
+          trackColor: colorScheme.surfaceContainerHigh,
           labelStyle: textTheme.labelLarge!.copyWith(
             color: Colors.white,
             fontWeight: FontWeight.w800,
@@ -597,6 +778,7 @@ class _VersusFigure extends StatelessWidget {
     final trailing = slices.length > 1 ? slices[1] : null;
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
@@ -625,7 +807,7 @@ class _VersusFigure extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(22),
                 child: visible.isEmpty
-                    ? ColoredBox(color: colorScheme.surfaceContainerHighest)
+                    ? ColoredBox(color: colorScheme.surfaceContainerHigh)
                     : Row(
                         children: [
                           for (final slice in visible)
@@ -780,18 +962,15 @@ class _StatisticBar extends StatelessWidget {
   const _StatisticBar({
     required this.slice,
     required this.impact,
-    this.compact = false,
-    this.thick = false,
+    this.filled = false,
   });
 
   final ChartSlice slice;
   final double impact;
 
-  /// Legend row only, without the progress bar.
-  final bool compact;
-
-  /// Bigger progress bar when the bars are the main figure.
-  final bool thick;
+  /// The row background doubles as a bar showing the share, when the bars
+  /// are the main figure.
+  final bool filled;
 
   @override
   Widget build(BuildContext context) {
@@ -799,102 +978,102 @@ class _StatisticBar extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final entry = slice.entry;
     final highlighted = slice.highlighted;
-    final glow = highlighted ? 0.1 + 0.12 * math.sin(math.pi * impact) : 0.0;
+    final pulse = math.sin(math.pi * impact);
+    final glow = highlighted ? 0.1 + 0.12 * pulse : 0.0;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: compact
-          ? const EdgeInsets.fromLTRB(14, 10, 14, 10)
-          : const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      decoration: BoxDecoration(
-        color: entry.color.withValues(alpha: glow),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: entry.color,
-                  shape: BoxShape.circle,
-                ),
-                child: const SizedBox.square(dimension: 10),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  entry.label,
-                  style: textTheme.bodyLarge?.copyWith(
-                    fontWeight: highlighted ? FontWeight.w700 : FontWeight.w500,
-                  ),
-                ),
-              ),
-              if (highlighted) ...[
-                Icon(Icons.check_circle_rounded, size: 18, color: entry.color),
-                const SizedBox(width: 8),
-              ],
-              Stack(
-                clipBehavior: Clip.none,
+    final row = Row(
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(color: entry.color, shape: BoxShape.circle),
+          child: const SizedBox.square(dimension: 10),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            entry.label,
+            style: textTheme.bodyLarge?.copyWith(
+              fontWeight: highlighted ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+        if (highlighted) ...[
+          Icon(Icons.check_circle_rounded, size: 18, color: entry.color),
+          const SizedBox(width: 8),
+        ],
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Text.rich(
+              TextSpan(
                 children: [
-                  Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: slice.percent,
-                          style: textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        TextSpan(
-                          text: '  ${slice.count}',
-                          style: textTheme.labelMedium?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
+                  TextSpan(
+                    text: slice.percent,
+                    style: textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  if (highlighted && impact > 0 && impact < 1)
-                    Positioned(
-                      right: 0,
-                      bottom: 18 + 18 * impact,
-                      child: Opacity(
-                        opacity: _bubbleOpacity(impact),
-                        child: Text(
-                          '+1',
-                          style: textTheme.titleMedium?.copyWith(
-                            color: entry.color,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
+                  TextSpan(
+                    text: '  ${formatCount(slice.count)}',
+                    style: textTheme.labelMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
                     ),
+                  ),
                 ],
               ),
-            ],
-          ),
-          if (!compact) ...[
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(thick ? 8 : 6),
-              child: SizedBox(
-                height: thick ? 16 : 8,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    ColoredBox(color: colorScheme.surfaceContainerHighest),
-                    FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: slice.fraction.clamp(0, 1),
-                      child: ColoredBox(color: entry.color),
+            ),
+            if (highlighted && impact > 0 && impact < 1)
+              Positioned(
+                right: 0,
+                bottom: 18 + 18 * impact,
+                child: Opacity(
+                  opacity: _bubbleOpacity(impact),
+                  child: Text(
+                    '+1',
+                    style: textTheme.titleMedium?.copyWith(
+                      color: entry.color,
+                      fontWeight: FontWeight.w800,
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
           ],
+        ),
+      ],
+    );
+
+    if (!filled) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 2),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        decoration: BoxDecoration(
+          color: entry.color.withValues(alpha: glow),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: row,
+      );
+    }
+
+    final dark = colorScheme.brightness == Brightness.dark;
+    final fill = (dark ? 0.34 : 0.22) + (highlighted ? 0.1 + 0.12 * pulse : 0);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: FractionallySizedBox(
+                alignment: AlignmentDirectional.centerStart,
+                widthFactor: slice.fraction.clamp(0, 1),
+                child: ColoredBox(color: entry.color.withValues(alpha: fill)),
+              ),
+            ),
+          ),
+          Padding(padding: const EdgeInsets.all(12), child: row),
         ],
       ),
     );
@@ -924,12 +1103,15 @@ class _DonutPainter extends CustomPainter {
   final Color trackColor;
   final double pulse;
 
-  static const _stroke = 22.0;
+  static const _stroke = 20.0;
+  static const _gap = 0.05;
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
-    final radius = size.shortestSide / 2 - _stroke / 2 - 6;
+    final scale = math.min(1, size.shortestSide / 180);
+    final baseStroke = _stroke * scale;
+    final radius = size.shortestSide / 2 - baseStroke / 2 - 8 * scale;
     final rect = Rect.fromCircle(center: center, radius: radius);
     final paint = Paint()..style = PaintingStyle.stroke;
 
@@ -938,21 +1120,44 @@ class _DonutPainter extends CustomPainter {
       radius,
       paint
         ..color = trackColor
-        ..strokeWidth = _stroke,
+        ..strokeWidth = baseStroke,
     );
 
     final visible = segments.where((segment) => segment.fraction > 0).length;
-    final gap = visible > 1 ? 0.035 : 0.0;
     var start = -math.pi / 2;
     for (final segment in segments) {
       final sweep = segment.fraction * 2 * math.pi;
-      if (sweep - gap > 0) {
-        paint
-          ..color = segment.color
-          ..strokeWidth = segment.highlighted
-              ? _stroke + 4 + 8 * pulse
-              : _stroke;
-        canvas.drawArc(rect, start + gap / 2, sweep - gap, false, paint);
+      final stroke = segment.highlighted
+          ? baseStroke + (4 + 8 * pulse) * scale
+          : baseStroke;
+      paint
+        ..color = segment.color
+        ..strokeWidth = stroke;
+      if (visible == 1 && sweep > 0) {
+        canvas.drawCircle(center, radius, paint..strokeCap = StrokeCap.butt);
+      } else if (sweep > 0) {
+        // Round caps overflow each end by half the stroke: shorten the arc
+        // so neighbours keep a clean gap, and draw tiny shares as dots.
+        final caps = stroke / radius;
+        final arc = sweep - _gap - caps;
+        if (arc > 0) {
+          canvas.drawArc(
+            rect,
+            start + (_gap + caps) / 2,
+            arc,
+            false,
+            paint..strokeCap = StrokeCap.round,
+          );
+        } else {
+          final angle = start + sweep / 2;
+          final dotRadius =
+              stroke / 2 * math.min(1, sweep / (_gap + caps)).clamp(0.45, 1);
+          canvas.drawCircle(
+            center + Offset(math.cos(angle), math.sin(angle)) * radius,
+            dotRadius,
+            Paint()..color = segment.color,
+          );
+        }
       }
       start += sweep;
     }

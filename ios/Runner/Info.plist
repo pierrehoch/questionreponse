@@ -28,6 +28,12 @@
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Sélectionner une photo pour votre profil.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Autoriser Flutter à se connecter au service de débogage de cette app sur le réseau local.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_dartVmService._tcp</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:question_reponse/app/widgets/loading_button.dart';
+import 'package:question_reponse/app/widgets/notice_banner.dart';
 import 'package:question_reponse/features/auth/presentation/auth_validators.dart';
 import 'package:question_reponse/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:question_reponse/features/auth/presentation/widgets/auth_error_message.dart';
@@ -31,7 +33,14 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
 
     return AuthPageScaffold(
       title: 'Mot de passe oublié',
-      subtitle: 'Nous vous enverrons un lien de réinitialisation.',
+      subtitle:
+          'Saisissez votre adresse e-mail, nous vous enverrons un lien '
+          'pour choisir un nouveau mot de passe.',
+      footer: AuthFooterLink(
+        prompt: 'Vous vous en souvenez ?',
+        action: 'Retour à la connexion',
+        onPressed: action.isLoading ? null : () => Navigator.of(context).pop(),
+      ),
       child: Form(
         key: _formKey,
         onChanged: () {
@@ -51,7 +60,7 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
               textInputAction: TextInputAction.done,
               decoration: const InputDecoration(
                 labelText: 'Adresse e-mail',
-                prefixIcon: Icon(Icons.email_outlined),
+                prefixIcon: Icon(Icons.mail_outline_rounded),
               ),
               validator: validateEmail,
               onFieldSubmitted: (_) => _submit(),
@@ -62,29 +71,19 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
             ],
             if (_emailSent) ...[
               const SizedBox(height: 16),
-              Semantics(
-                liveRegion: true,
-                child: Text(
-                  'Si un compte correspond à cette adresse, un e-mail vient '
-                  'd’être envoyé.',
-                ),
+              const NoticeBanner(
+                tone: NoticeTone.success,
+                icon: Icons.mark_email_read_outlined,
+                message:
+                    'Si un compte correspond à cette adresse, un e-mail vient '
+                    'd’être envoyé.',
               ),
             ],
             const SizedBox(height: 24),
-            FilledButton(
-              onPressed: action.isLoading ? null : _submit,
-              child: action.isLoading
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Envoyer le lien'),
-            ),
-            TextButton(
-              onPressed: action.isLoading
-                  ? null
-                  : () => Navigator.of(context).pop(),
-              child: const Text('Retour à la connexion'),
+            LoadingButton(
+              label: 'Envoyer le lien',
+              loading: action.isLoading,
+              onPressed: _submit,
             ),
           ],
         ),

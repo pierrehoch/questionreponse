@@ -53,7 +53,7 @@ class _CountryPickerSheetState extends State<_CountryPickerSheet> {
       builder: (context, scrollController) => Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -104,6 +104,9 @@ class _CountryPickerSheetState extends State<_CountryPickerSheet> {
                       final selected = country == widget.selected;
                       return ListTile(
                         selected: selected,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                        ),
                         leading: Text(
                           country.flag,
                           style: const TextStyle(fontSize: 26),
@@ -163,7 +166,7 @@ class CountryFormField extends FormField<Country> {
                  labelText: labelText,
                  hintText: 'Choisir dans la liste',
                  prefixIcon: country == null
-                     ? const Icon(Icons.public)
+                     ? const Icon(Icons.public_rounded)
                      : Padding(
                          padding: const EdgeInsets.symmetric(horizontal: 12),
                          child: Text(

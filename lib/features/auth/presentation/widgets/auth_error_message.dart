@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:question_reponse/app/widgets/notice_banner.dart';
 import 'package:question_reponse/features/auth/domain/auth_failure.dart';
 
 class AuthErrorMessage extends StatelessWidget {
@@ -12,21 +13,6 @@ class AuthErrorMessage extends StatelessWidget {
         ? (error as AuthFailure).message
         : 'Une erreur inattendue est survenue.';
 
-    return Semantics(
-      liveRegion: true,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.errorContainer,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(
-          message,
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onErrorContainer,
-          ),
-        ),
-      ),
-    );
+    return NoticeBanner(message: message);
   }
 }

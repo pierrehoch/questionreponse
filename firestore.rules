@@ -133,6 +133,7 @@ service cloud.firestore {
           'photoUrl',
           'country',
           'sex',
+          'birthDate',
           'createdAt',
           'updatedAt'
         ])
@@ -144,6 +145,11 @@ service cloud.firestore {
         && data.country is string
         && data.country.matches('^[A-Z]{2}$')
         && data.sex in ['male', 'female', 'other']
+        && (!('birthDate' in data) || (
+          data.birthDate is timestamp
+          && data.birthDate >= timestamp.date(1900, 1, 1)
+          && data.birthDate <= request.time
+        ))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -154,6 +160,7 @@ service cloud.firestore {
 
       allow create: if isOwner(userId)
         && validProfile(request.resource.data)
+        && 'birthDate' in request.resource.data
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time
         && getAfter(

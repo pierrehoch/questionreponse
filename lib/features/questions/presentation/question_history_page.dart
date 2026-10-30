@@ -8,6 +8,9 @@ import 'package:question_reponse/features/questions/presentation/controllers/que
 import 'package:question_reponse/features/questions/presentation/question_page.dart';
 import 'package:question_reponse/features/questions/presentation/widgets/question_message.dart';
 import 'package:question_reponse/features/responses/presentation/controllers/response_controller.dart';
+import 'package:question_reponse/features/statistics/presentation/controllers/statistics_providers.dart';
+import 'package:question_reponse/features/statistics/presentation/widgets/response_distribution.dart';
+import 'package:question_reponse/features/statistics/presentation/widgets/statistics_chart.dart';
 
 class QuestionHistoryPage extends ConsumerWidget {
   const QuestionHistoryPage({super.key});
@@ -130,7 +133,7 @@ class _ProgressHeader extends StatelessWidget {
               children: [
                 Text(
                   done
-                      ? 'Vous avez répondu à toutes les questions'
+                      ? 'Votre participation est complète'
                       : '$remaining ${remaining > 1 ? 'questions' : 'question'} '
                             'à répondre',
                   style: textTheme.titleMedium,
@@ -222,44 +225,19 @@ class _QuestionTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      if (answered)
-                        Icon(
-                          Icons.done_rounded,
-                          size: 14,
-                          color: colorScheme.onSurfaceVariant,
-                        )
-                      else
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: BoxDecoration(
-                            color: colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          [
-                            answered ? 'Répondu' : 'À répondre',
-                            if (question.publishedAt case final date?)
-                              formatShortDate(date),
-                          ].join(' · '),
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.labelMedium?.copyWith(
-                            color: answered
-                                ? colorScheme.onSurfaceVariant
-                                : colorScheme.primary,
-                            fontWeight: answered
-                                ? FontWeight.w500
-                                : FontWeight.w700,
-                          ),
-                        ),
+                  if (question.publishedAt case final date?)
+                    Text(
+                      formatShortDate(date),
+                      style: textTheme.labelMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
                       ),
-                    ],
-                  ),
+                    ),
+                  const SizedBox(height: 10),
+                  // Results stay hidden until the user has voted.
+                  if (answered)
+                    _HistoryDistribution(questionId: question.id)
+                  else
+                    const ResponseDistribution(entries: [], height: 8),
                 ],
               ),
             ),
@@ -271,6 +249,57 @@ class _QuestionTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _HistoryDistribution extends ConsumerWidget {
+  const _HistoryDistribution({required this.questionId});
+
+  final String questionId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final statistics = ref.watch(questionStatisticsProvider(questionId));
+    final choices = ref.watch(questionChoicesProvider(questionId));
+    if (statistics.hasError || choices.hasError) {
+      return TextButton.icon(
+        onPressed: () {
+          ref.invalidate(questionStatisticsProvider(questionId));
+          ref.invalidate(questionChoicesProvider(questionId));
+        },
+        icon: const Icon(Icons.refresh_rounded, size: 14),
+        label: const Text('Répartition indisponible'),
+      );
+    }
+    if (statistics.isLoading || choices.isLoading) {
+      return const SizedBox(height: 8, child: LinearProgressIndicator());
+    }
+    final summary = statistics.value;
+    final colors = Theme.of(context).colorScheme;
+    return ResponseDistribution(
+      height: 8,
+      entries: [
+        for (final (index, choice) in (choices.value ?? []).indexed)
+          StatisticEntry(
+            id: choice.id,
+            label: '',
+            count: summary?.countForChoice(choice.id) ?? 0,
+            color: AppTheme.choiceColor(index),
+          ),
+        StatisticEntry(
+          id: 'blank',
+          label: '',
+          count: summary?.blankCount ?? 0,
+          color: colors.onSurfaceVariant,
+        ),
+        StatisticEntry(
+          id: 'abstention',
+          label: '',
+          count: summary?.abstentionCount ?? 0,
+          color: colors.outline,
+        ),
+      ],
     );
   }
 }

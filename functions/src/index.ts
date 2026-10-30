@@ -7,6 +7,7 @@ import {
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {logger} from "firebase-functions";
 import {onSchedule} from "firebase-functions/v2/scheduler";
+import {aggregateDemographics} from "./demographics.js";
 import {
   ResponseType,
   submitResponseTransaction,
@@ -122,6 +123,37 @@ export const getFilteredStatistics = onCall<FilteredStatisticsData>(
       choiceCounts,
       blankCount,
       abstentionCount,
+      updatedAt: new Date().toISOString(),
+    };
+  },
+);
+
+export const getDemographicStatistics = onCall<{questionId?: unknown}>(
+  {region: "europe-west9", enforceAppCheck: true},
+  async (request) => {
+    const userId = request.auth?.uid;
+    if (!userId) {
+      throw new HttpsError("unauthenticated", "not_authorized");
+    }
+    const questionId = request.data.questionId;
+    if (typeof questionId !== "string" || !questionId.trim() ||
+        questionId.includes("/")) {
+      throw new HttpsError("invalid-argument", "question_not_found");
+    }
+    const [question, participation] = await db.getAll(
+      db.doc(`questions/${questionId}`),
+      db.doc(`users/${userId}/responses/${questionId}`),
+    );
+    if (!question.exists || question.get("status") !== "published") {
+      throw new HttpsError("not-found", "question_not_found");
+    }
+    if (!participation.exists) {
+      throw new HttpsError("permission-denied", "statistics_not_available");
+    }
+    const responses = await db.collectionGroup("responses")
+      .where("questionId", "==", questionId).get();
+    return {
+      groups: aggregateDemographics(responses.docs.map((doc) => doc.data())),
       updatedAt: new Date().toISOString(),
     };
   },

@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:question_reponse/features/statistics/data/firestore_statistics_repository.dart';
 import 'package:question_reponse/features/statistics/domain/question_statistics.dart';
+import 'package:question_reponse/features/statistics/domain/demographic_statistics.dart';
 import 'package:question_reponse/features/statistics/domain/statistics_filter.dart';
 import 'package:question_reponse/features/statistics/domain/statistics_repository.dart';
 
@@ -17,6 +18,13 @@ final questionStatisticsProvider =
     StreamProvider.family<QuestionStatistics?, String>(
       (ref, questionId) =>
           ref.watch(statisticsRepositoryProvider).watchSummary(questionId),
+    );
+
+final demographicStatisticsProvider = FutureProvider.autoDispose
+    .family<DemographicStatistics, String>(
+      (ref, questionId) =>
+          ref.watch(statisticsRepositoryProvider).getDemographics(questionId),
+      retry: (retryCount, error) => null,
     );
 
 typedef FilteredStatisticsRequest = ({

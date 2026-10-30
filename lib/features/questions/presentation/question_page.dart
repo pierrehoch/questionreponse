@@ -595,6 +595,16 @@ class _QuestionHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Semantics(
+          header: true,
+          child: Text(
+            question.text,
+            style: question.text.length > 90
+                ? textTheme.headlineSmall
+                : textTheme.headlineMedium,
+          ),
+        ),
+        const SizedBox(height: 8),
         if (icon != null || publishedAt != null || infoText != null) ...[
           SizedBox(
             height: 36,
@@ -632,15 +642,6 @@ class _QuestionHeader extends StatelessWidget {
           ),
           const SizedBox(height: 8),
         ],
-        Semantics(
-          header: true,
-          child: Text(
-            question.text,
-            style: question.text.length > 90
-                ? textTheme.headlineSmall
-                : textTheme.headlineMedium,
-          ),
-        ),
       ],
     );
   }
@@ -654,26 +655,39 @@ class _QuestionHeader extends StatelessWidget {
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (context) => SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
-          AppTheme.pagePadding + 4,
-          0,
-          AppTheme.pagePadding + 4,
-          32,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('En savoir plus', style: textTheme.titleLarge),
-            const SizedBox(height: 12),
-            Text(
-              infoText,
-              style: textTheme.bodyLarge?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
+      constraints: BoxConstraints.tightFor(
+        width: MediaQuery.sizeOf(context).width,
+      ),
+      builder: (context) => SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: MediaQuery.sizeOf(context).width,
+            minHeight: MediaQuery.sizeOf(context).height * 0.45,
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(
+              AppTheme.pagePadding + 4,
+              0,
+              AppTheme.pagePadding + 4,
+              32,
             ),
-          ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('En savoir plus', style: textTheme.titleLarge),
+                const SizedBox(height: 12),
+                Text(
+                  infoText,
+                  style: textTheme.bodyLarge?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

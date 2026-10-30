@@ -5,6 +5,7 @@ import {
   Timestamp,
 } from "firebase-admin/firestore";
 import {HttpsError} from "firebase-functions/v2/https";
+import {ageGroupAt} from "./demographics.js";
 
 export type ResponseType = "choice" | "blank" | "abstention";
 
@@ -95,6 +96,7 @@ export async function submitResponseTransaction(
       ...(choiceId ? {choiceId} : {}),
       country: profile.get("country"),
       sex: profile.get("sex"),
+      ageGroup: ageGroupAt(profile.get("birthDate"), new Date()),
       createdAt: FieldValue.serverTimestamp(),
     });
 

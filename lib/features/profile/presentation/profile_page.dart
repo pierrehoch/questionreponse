@@ -31,6 +31,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   final _usernameController = TextEditingController();
   Country? _country;
   UserSex? _sex;
+  DateTime? _birthDate;
   String? _initializedProfileId;
   Uint8List? _selectedPhoto;
   String? _selectedPhotoContentType;
@@ -111,7 +112,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                             const SizedBox(height: 16),
                             Text(
                               'Ces informations permettent de comparer les '
-                              'résultats par pays et par sexe.',
+                              'résultats par pays, sexe et âge. Votre date de '
+                              'naissance reste privée ; seules des tranches '
+                              'd’âge sont utilisées dans les statistiques.',
                               textAlign: TextAlign.center,
                               style: textTheme.bodyMedium?.copyWith(
                                 color: colorScheme.onSurfaceVariant,
@@ -149,6 +152,59 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                             validator: (country) => country == null
                                 ? 'Sélectionnez votre pays dans la liste.'
                                 : null,
+                          ),
+                          const SizedBox(height: 24),
+                          FormField<DateTime>(
+                            key: ValueKey(
+                              'birth-${_initializedProfileId ?? 'new'}',
+                            ),
+                            initialValue: _birthDate,
+                            validator: (value) => value == null
+                                ? 'Renseignez votre date de naissance.'
+                                : null,
+                            builder: (field) => InkWell(
+                              onTap: action.isLoading
+                                  ? null
+                                  : () async {
+                                      final now = DateUtils.dateOnly(
+                                        DateTime.now(),
+                                      );
+                                      final date = await showDatePicker(
+                                        context: context,
+                                        initialDate:
+                                            field.value ??
+                                            DateTime(
+                                              now.year - 18,
+                                              now.month,
+                                              now.day,
+                                            ),
+                                        firstDate: DateTime(1900),
+                                        lastDate: now,
+                                        helpText: 'Date de naissance',
+                                        cancelText: 'Annuler',
+                                        confirmText: 'Valider',
+                                      );
+                                      if (date != null && mounted) {
+                                        _birthDate = date;
+                                        field.didChange(date);
+                                      }
+                                    },
+                              child: InputDecorator(
+                                decoration: InputDecoration(
+                                  labelText: 'Date de naissance',
+                                  prefixIcon: const Icon(Icons.cake_outlined),
+                                  errorText: field.errorText,
+                                  enabled: !action.isLoading,
+                                ),
+                                child: Text(
+                                  field.value == null
+                                      ? 'Choisir une date'
+                                      : '${field.value!.day.toString().padLeft(2, '0')}/'
+                                            '${field.value!.month.toString().padLeft(2, '0')}/'
+                                            '${field.value!.year}',
+                                ),
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 24),
                           const SectionLabel('Sexe'),
@@ -216,6 +272,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     _usernameController.text = profile.username;
     _country = Countries.byCode(profile.country);
     _sex = profile.sex;
+    _birthDate = profile.birthDate;
   }
 
   String _avatarLabel(UserProfile? profile) {
@@ -281,6 +338,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         username: _usernameController.text,
         country: _country!.code,
         sex: _sex!,
+        birthDate: _birthDate!,
         photoUrl: photoUrl,
       ),
     );

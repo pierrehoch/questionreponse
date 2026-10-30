@@ -24,6 +24,12 @@ class FirestoreProfileRepository implements ProfileRepository {
     required String email,
     required ProfileInput input,
   }) async {
+    final date = input.birthDate;
+    final birthDate = DateTime.utc(date.year, date.month, date.day);
+    if (birthDate.isBefore(DateTime.utc(1900)) ||
+        birthDate.isAfter(DateTime.now())) {
+      throw const ProfileFailure('La date de naissance n’est pas valide.');
+    }
     final normalizedUsername = input.normalizedUsername;
     final userReference = _firestore.collection('users').doc(userId);
     final usernameReference = _firestore
@@ -65,6 +71,7 @@ class FirestoreProfileRepository implements ProfileRepository {
           'photoUrl': input.photoUrl,
           'country': input.country.trim().toUpperCase(),
           'sex': input.sex.value,
+          'birthDate': Timestamp.fromDate(birthDate),
           'createdAt': createdAt,
           'updatedAt': FieldValue.serverTimestamp(),
         });

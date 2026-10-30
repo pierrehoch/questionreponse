@@ -19,15 +19,17 @@ const {
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
 } = require("firebase/firestore");
 const {
   getBytes,
   ref,
   uploadBytes,
 } = require("firebase/storage");
-const {deleteApp, initializeApp} = require("firebase-admin/app");
+const {deleteApp, getApp, initializeApp} = require("firebase-admin/app");
 const {
   FieldValue,
+  Timestamp,
   getFirestore,
 } = require("firebase-admin/firestore");
 const {
@@ -288,6 +290,101 @@ test("profile photos are owner-only writes with bounded image content", async ()
   ));
 });
 
+test("demographic callable requires participation and returns only grouped counts", async () => {
+  const {getDemographicStatistics} = require("../lib/index.js");
+  const db = getFirestore();
+  try {
+    await assert.rejects(getDemographicStatistics.run({
+      data: {questionId: "published"},
+    }), (error) => error.code === "unauthenticated");
+    const request = {
+      auth: {uid: "user-one"},
+      data: {questionId: "published"},
+    };
+    await assert.rejects(getDemographicStatistics.run(request),
+      (error) => error.message === "statistics_not_available");
+    await db.doc("users/user-one/responses/published").set({
+      questionId: "published",
+      type: "choice",
+      choiceId: "yes",
+      country: "FR",
+      sex: "other",
+      ageGroup: "25-34",
+    });
+    await db.doc("users/legacy-user/responses/published").set({
+      questionId: "published",
+      type: "blank",
+      country: "BE",
+      sex: "female",
+    });
+    await db.doc("users/legacy-user/responses/another").set({
+      questionId: "another",
+      type: "blank",
+      country: "FR",
+      sex: "female",
+    });
+    const result = await getDemographicStatistics.run(request);
+    assert.equal(result.groups.country.FR.totalResponses, 1);
+    assert.equal(result.groups.country.BE.blankCount, 1);
+    assert.equal(result.groups.age["25-34"].choiceCounts.yes, 1);
+    assert.equal(result.groups.age.unknown.totalResponses, 1);
+    assert.equal(result.groups.sex.female.totalResponses, 1);
+    assert.equal(JSON.stringify(result).includes("user-one"), false);
+    assert.equal(JSON.stringify(result).includes("birthDate"), false);
+    await assert.rejects(getDemographicStatistics.run({
+      ...request, data: {questionId: "pending"},
+    }), (error) => error.message === "question_not_found");
+  } finally {
+    await deleteApp(getApp());
+  }
+});
+
+test("birth dates are required for new profiles, validated and private", async () => {
+  const db = testEnvironment.authenticatedContext(
+    "new-user", {email: "new@example.com"},
+  ).firestore();
+  const create = (birthDate) => {
+    const batch = writeBatch(db);
+    batch.set(doc(db, "usernames/new_user"), {
+      userId: "new-user",
+      createdAt: serverTimestamp(),
+    });
+    batch.set(doc(db, "users/new-user"), {
+      username: "new_user",
+      normalizedUsername: "new_user",
+      email: "new@example.com",
+      photoUrl: null,
+      country: "FR",
+      sex: "other",
+      ...(birthDate === undefined ? {} : {birthDate}),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return batch.commit();
+  };
+  await assertFails(create(undefined));
+  await assertFails(create("1990-01-01"));
+  await assertFails(create(new Date("1899-12-31T00:00:00Z")));
+  await assertFails(create(new Date("2999-01-01T00:00:00Z")));
+  await assertSucceeds(create(new Date("1990-06-15T00:00:00Z")));
+  await assertSucceeds(getDoc(doc(db, "users/new-user")));
+  const otherDb = testEnvironment.authenticatedContext("other-user").firestore();
+  await assertFails(getDoc(doc(otherDb, "users/new-user")));
+});
+
+test("legacy profiles can add a birth date without losing other fields", async () => {
+  const db = testEnvironment.authenticatedContext(
+    "user-one", {email: "one@example.com"},
+  ).firestore();
+  await assertSucceeds(updateDoc(doc(db, "users/user-one"), {
+    birthDate: new Date("1980-12-24T00:00:00Z"),
+    updatedAt: serverTimestamp(),
+  }));
+  const profile = await getDoc(doc(db, "users/user-one"));
+  assert.equal(profile.get("country"), "FR");
+  assert.equal(profile.get("birthDate").toDate().getUTCFullYear(), 1980);
+});
+
 test("concurrent submissions create exactly one immutable response", async () => {
   await testEnvironment.clearFirestore();
   const app = initializeApp({projectId}, `concurrency-${Date.now()}`);
@@ -304,6 +401,7 @@ test("concurrent submissions create exactly one immutable response", async () =>
   await db.collection("users").doc("user").set({
     country: "FR",
     sex: "other",
+    birthDate: Timestamp.fromDate(new Date("1990-06-15T00:00:00Z")),
   });
 
   const input = {
@@ -350,6 +448,9 @@ test("concurrent submissions create exactly one immutable response", async () =>
     .get();
   assert.equal(response.exists, true);
   assert.equal(response.get("choiceId"), "yes");
+  assert.equal(typeof response.get("ageGroup"), "string");
+  assert.notEqual(response.get("ageGroup"), "unknown");
+  assert.equal(response.get("birthDate"), undefined);
   assert.equal(statistics.get("totalResponses"), 1);
   assert.equal(statistics.get("choiceCounts.yes"), 1);
   assert.equal(statistics.get("blankCount"), 0);

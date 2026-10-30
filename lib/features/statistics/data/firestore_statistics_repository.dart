@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:question_reponse/features/statistics/domain/question_statistics.dart';
+import 'package:question_reponse/features/statistics/domain/demographic_statistics.dart';
 import 'package:question_reponse/features/statistics/domain/statistics_failure.dart';
 import 'package:question_reponse/features/statistics/domain/statistics_filter.dart';
 import 'package:question_reponse/features/statistics/domain/statistics_repository.dart';
@@ -10,6 +11,23 @@ class FirestoreStatisticsRepository implements StatisticsRepository {
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
+
+  @override
+  Future<DemographicStatistics> getDemographics(String questionId) async {
+    try {
+      final result = await _functions
+          .httpsCallable('getDemographicStatistics')
+          .call<Map<Object?, Object?>>({'questionId': questionId});
+      return DemographicStatistics.fromCallable(result.data);
+    } on FirebaseFunctionsException catch (error) {
+      throw StatisticsFailure(switch (error.message) {
+        'statistics_not_available' =>
+          'Les comparaisons sont disponibles après participation.',
+        'question_not_found' => 'Cette question est introuvable.',
+        _ => 'Impossible de charger les comparaisons pour le moment.',
+      });
+    }
+  }
 
   @override
   Future<QuestionStatistics> getFiltered({

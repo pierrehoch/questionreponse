@@ -55,6 +55,7 @@ class StatisticsChart extends StatefulWidget {
     this.highlightedId,
     this.animateVote = false,
     this.expand = false,
+    this.showLive = false,
     super.key,
   });
 
@@ -66,6 +67,7 @@ class StatisticsChart extends StatefulWidget {
   /// Lets the figure fill the free height (which must be bounded), shrinking
   /// it on short screens and hiding it when there is no room left.
   final bool expand;
+  final bool showLive;
 
   @override
   State<StatisticsChart> createState() => _StatisticsChartState();
@@ -177,6 +179,7 @@ class _StatisticsChartState extends State<StatisticsChart>
         final expand = widget.expand;
         final participantsLabel = _ParticipantsLabel(
           participants: participants,
+          showLive: widget.showLive,
         );
 
         return Column(
@@ -195,6 +198,7 @@ class _StatisticsChartState extends State<StatisticsChart>
                   slices: slices,
                   participants: participants,
                   pulse: pulse,
+                  showLive: widget.showLive,
                 ),
               ),
               QuestionChartType.bars => const SizedBox.shrink(),
@@ -354,9 +358,13 @@ class _RenderReservedHeight extends RenderProxyBox {
 }
 
 class _ParticipantsLabel extends StatelessWidget {
-  const _ParticipantsLabel({required this.participants});
+  const _ParticipantsLabel({
+    required this.participants,
+    required this.showLive,
+  });
 
   final int participants;
+  final bool showLive;
 
   @override
   Widget build(BuildContext context) {
@@ -364,8 +372,9 @@ class _ParticipantsLabel extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           Icon(
             Icons.groups_rounded,
@@ -381,6 +390,7 @@ class _ParticipantsLabel extends StatelessWidget {
               color: colorScheme.onSurfaceVariant,
             ),
           ),
+          if (showLive) ...[const SizedBox(width: 8), const _LiveLabel()],
         ],
       ),
     );
@@ -392,11 +402,13 @@ class _DonutFigure extends StatelessWidget {
     required this.slices,
     required this.participants,
     required this.pulse,
+    required this.showLive,
   });
 
   final List<ChartSlice> slices;
   final int participants;
   final double pulse;
+  final bool showLive;
 
   @override
   Widget build(BuildContext context) {
@@ -414,9 +426,12 @@ class _DonutFigure extends StatelessWidget {
       trackColor: colorScheme.surfaceContainerHigh,
       pulse: pulse,
     );
-    final count = Text(
-      formatCount(participants),
-      style: textTheme.headlineMedium,
+    final count = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(formatCount(participants), style: textTheme.headlineMedium),
+        if (showLive) ...[const SizedBox(width: 8), const _LiveLabel()],
+      ],
     );
     final label = Text(
       participants > 1 ? 'participants' : 'participant',
@@ -445,6 +460,7 @@ class _DonutFigure extends StatelessWidget {
             ],
           );
         }
+
         return Center(
           child: AspectRatio(
             aspectRatio: 1,
@@ -466,6 +482,17 @@ class _DonutFigure extends StatelessWidget {
       },
     );
   }
+}
+
+class _LiveLabel extends StatelessWidget {
+  const _LiveLabel();
+
+  @override
+  Widget build(BuildContext context) => Text(
+    '● En direct',
+    style: Theme.of(context).textTheme.labelSmall
+        ?.copyWith(color: const Color(0xFF16A34A), fontWeight: FontWeight.w700),
+  );
 }
 
 /// Vertical bars, one per answer, with the share printed on top.

@@ -59,7 +59,11 @@ projets Firebase.
 
 Après inscription, l'application exige la création d'un profil avec un pseudo
 unique, un pays choisi dans la liste des pays ISO 3166-1 (sélecteur avec
-recherche, `lib/core/countries/`) et une valeur de sexe. Le pseudo et son
+recherche, `lib/core/countries/`), une valeur de sexe et sa date de naissance
+précise (de 1900 à aujourd'hui). Cette date reste privée dans le profil ;
+seule la tranche d'âge au moment du vote est conservée dans la réponse.
+Les profils existants peuvent ajouter leur date depuis « Mon profil ».
+Le pseudo et son
 index d'unicité sont écrits dans une même transaction Firestore. Chaque utilisateur
 peut également envoyer une photo JPEG/PNG de 5 Mo maximum ; les règles Storage
 réservent l'écriture au propriétaire.
@@ -79,12 +83,13 @@ n'apparaissent que si la question a été créée avec `allowBlank` ou
 `allowAbstention`. La fonction `submitResponse` et les règles Firestore
 refusent (`response_type_not_allowed`) un type de réponse non autorisé.
 
-La page d'une question affiche, de haut en bas, l'icône choisie à la
-création, le texte de la question, puis la date de publication et le bouton
-d'information de façon discrète. Les résultats se filtrent par sexe et par
-pays depuis une feuille dédiée (bouton « Mon pays », pays cliquable, pastilles
-des filtres actifs), et sont dessinés selon le type de graphique de la
-question (`packages/question_shared`) :
+La page affiche la question seule en tête, puis la date, l'icône et le bouton
+« En savoir plus ». La feuille d'information occupe toute la largeur, s'ouvre
+au minimum sur environ la moitié de l'écran et protège son contenu des zones
+système du téléphone. Aucun titre « Résultats » n'est ajouté ; « En direct »
+est placé à côté du nombre de participants lorsque le flux est connecté.
+Les graphiques gardent le type choisi pour la question
+(`packages/question_shared`) :
 
 | Type | Clé | Rendu |
 | --- | --- | --- |
@@ -95,6 +100,22 @@ question (`packages/question_shared`) :
 | Podium | `podium` | trois marches et médailles |
 | Bulles | `bubbles` | cercles proportionnels |
 | Duel | `versus` | barre unique avec badge « VS » |
+
+Le bouton « Comparer les pays, sexes et âges » remplace les filtres. Il ouvre
+trois vues de barres empilées normalisées, avec une légende commune et le
+nombre de participants de chaque groupe. Un appui long sur une couleur donne
+son pourcentage et son effectif. La callable `getDemographicStatistics`
+exige Authentication, App Check et une participation à la question ; elle
+ne renvoie que des agrégats, jamais les dates de naissance. Les tranches sont
+moins de 18 ans, 18–24, 25–34, 35–44, 45–54, 55–64 et 65 ans et plus.
+Les anciennes réponses sans âge restent dans « Âge non renseigné » ; elles
+ne sont pas réécrites à partir du profil actuel. Les comparaisons sont
+actualisées à chaque ouverture et ne portent pas la mention « En direct ».
+
+L'historique remplace « Répondu » par une ligne multicolore proportionnelle
+aux réponses de chaque question, sans légende. Une question sans réponse
+montre une ligne neutre : les résultats restent masqués tant que
+l'utilisateur n'a pas participé, comme les commentaires et les comparaisons.
 
 Pour réduire les démarrages à froid de la fonction (payants), il est possible
 d'ajouter `minInstances: 1` aux options de `submitResponse`.
@@ -112,8 +133,12 @@ firebase deploy --only functions:submitResponse,storage
 Après toute modification des règles ou de la fonction, redéployer :
 
 ```sh
-firebase deploy --only functions,firestore:rules
+firebase deploy --only functions,firestore:rules,firestore:indexes
 ```
+
+Les comparaisons nécessitent notamment le déploiement de
+`getDemographicStatistics` et de l'index de groupe de collections sur
+`responses.questionId`.
 
 ## Commentaires
 

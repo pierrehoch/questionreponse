@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:question_reponse/app/app.dart';
@@ -16,6 +18,27 @@ void main() {
   test('normalizes usernames for uniqueness', () {
     expect(normalizeUsername('  Alex_75 '), 'alex_75');
   });
+
+  test(
+    'reads birth dates while retaining compatibility with older profiles',
+    () {
+      final data = <String, Object?>{
+        'username': 'Alice',
+        'normalizedUsername': 'alice',
+        'email': 'alice@example.com',
+        'country': 'FR',
+        'sex': 'female',
+        'createdAt': Timestamp.fromDate(DateTime.utc(2026)),
+        'updatedAt': Timestamp.fromDate(DateTime.utc(2026)),
+      };
+      expect(UserProfile.fromFirestore('alice', data).birthDate, isNull);
+      data['birthDate'] = Timestamp.fromDate(DateTime.utc(1990, 6, 15));
+      expect(
+        UserProfile.fromFirestore('alice', data).birthDate,
+        DateTime.utc(1990, 6, 15),
+      );
+    },
+  );
 
   testWidgets('requires profile completion for a new authenticated user', (
     tester,
@@ -54,7 +77,21 @@ void main() {
     );
     expect(find.text('Sélectionnez votre pays dans la liste.'), findsOneWidget);
     expect(find.text('Sélectionnez une valeur.'), findsOneWidget);
+    expect(find.text('Renseignez votre date de naissance.'), findsOneWidget);
     expect(profileRepository.saveCalls, 0);
+
+    await tester.ensureVisible(find.text('Choisir une date'));
+    await tester.tap(find.text('Choisir une date'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    final picker = tester.widget<DatePickerDialog>(
+      find.byType(DatePickerDialog),
+    );
+    expect(picker.firstDate, DateTime(1900));
+    expect(picker.lastDate, DateUtils.dateOnly(DateTime.now()));
+    await tester.tap(find.text('Valider'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choisir une date'), findsNothing);
   });
 }
 

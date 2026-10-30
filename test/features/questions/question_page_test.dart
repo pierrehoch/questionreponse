@@ -21,6 +21,8 @@ import 'package:question_reponse/features/responses/domain/response_repository.d
 import 'package:question_reponse/features/responses/domain/user_response.dart';
 import 'package:question_reponse/features/responses/presentation/controllers/response_controller.dart';
 import 'package:question_reponse/features/statistics/domain/question_statistics.dart';
+import 'package:question_reponse/features/statistics/domain/demographic_statistics.dart';
+import 'package:question_reponse/features/statistics/presentation/widgets/response_distribution.dart';
 import 'package:question_reponse/features/statistics/domain/statistics_repository.dart';
 import 'package:question_reponse/features/statistics/domain/statistics_filter.dart';
 import 'package:question_reponse/features/statistics/presentation/controllers/statistics_providers.dart';
@@ -139,6 +141,74 @@ void main() {
     expect(find.byTooltip('Informations'), findsNothing);
   });
 
+  for (final width in [320.0, 800.0]) {
+    for (final longContent in [false, true]) {
+      testWidgets('info sheet fills width $width, long content: $longContent', (
+        tester,
+      ) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = Size(width, 844);
+        tester.view.padding = const FakeViewPadding(bottom: 34);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetPadding);
+        final info = longContent
+            ? '${List.filled(80, 'Voici le contexte de la question.').join('\n')}\nFin des informations.'
+            : 'Contexte court.';
+        final item = Question(
+          id: question.id,
+          text: question.text,
+          infoText: info,
+          status: QuestionStatus.published,
+          createdAt: DateTime(2026),
+          updatedAt: DateTime(2026),
+          publishedAt: DateTime(2026),
+          createdBy: 'admin-1',
+        );
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              authRepositoryProvider.overrideWithValue(_NoopAuthRepository()),
+              questionRepositoryProvider.overrideWithValue(
+                _QuestionTestRepository(questions: [item], question: item),
+              ),
+              responseRepositoryProvider.overrideWithValue(
+                _NoopResponseRepository(),
+              ),
+            ],
+            child: MaterialApp(
+              theme: ThemeData(useMaterial3: true),
+              home: const QuestionPage(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          tester.getTopLeft(find.text(item.text)).dy,
+          lessThan(tester.getTopLeft(find.text('1er janvier 2026')).dy),
+        );
+        await tester.tap(find.text('En savoir plus'));
+        await tester.pumpAndSettle();
+        final sheet = tester.getRect(find.byType(BottomSheet));
+        expect(sheet.width, width);
+        expect(sheet.top, lessThan(844 * 0.55));
+        final content = find.text(info);
+        if (longContent) {
+          final scroll = find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(SingleChildScrollView),
+          );
+          await tester.drag(scroll, const Offset(0, -10000));
+          await tester.pumpAndSettle();
+          expect(tester.getBottomLeft(content).dy, lessThanOrEqualTo(844 - 34));
+        } else {
+          expect(tester.getBottomLeft(content).dy, lessThan(844 - 34));
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   testWidgets('shows the latest published question on the home page', (
     tester,
   ) async {
@@ -214,6 +284,10 @@ void main() {
   testWidgets('opens the discussion in a sheet over the results', (
     tester,
   ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -271,10 +345,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Résultats'), findsOneWidget);
+    expect(find.text('Résultats'), findsNothing);
+    expect(find.text('● En direct'), findsOneWidget);
+    expect(find.text('Filtrer'), findsNothing);
+    expect(find.text('Comparer les pays, sexes et âges'), findsOneWidget);
     expect(find.text('Votre réponse'), findsNothing);
     expect(find.text('Alice : Python reste imbattable.'), findsOneWidget);
     expect(find.text('Python reste imbattable.'), findsNothing);
+
+    await tester.tap(find.text('Comparer les pays, sexes et âges'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pays'), findsOneWidget);
+    expect(find.text('Sexes'), findsOneWidget);
+    expect(find.text('Âges'), findsOneWidget);
+    expect(find.text('Aucune donnée disponible.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    Navigator.of(tester.element(find.byType(BottomSheet))).pop();
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Alice : Python reste imbattable.'));
     await tester.pumpAndSettle();
@@ -291,7 +378,13 @@ void main() {
         overrides: [
           authRepositoryProvider.overrideWithValue(_SignedInAuthRepository()),
           questionRepositoryProvider.overrideWithValue(
-            _QuestionTestRepository(questions: [question]),
+            _QuestionTestRepository(
+              questions: [question],
+              choices: const [
+                QuestionChoice(id: 'python', text: 'Python', position: 0),
+                QuestionChoice(id: 'dart', text: 'Dart', position: 1),
+              ],
+            ),
           ),
           responseRepositoryProvider.overrideWithValue(
             _NoopResponseRepository(
@@ -306,6 +399,17 @@ void main() {
               ],
             ),
           ),
+          statisticsRepositoryProvider.overrideWithValue(
+            _SilentStatisticsRepository(
+              summary: QuestionStatistics(
+                totalResponses: 4,
+                choiceCounts: const {'python': 1, 'dart': 3},
+                blankCount: 0,
+                abstentionCount: 0,
+                updatedAt: DateTime(2026),
+              ),
+            ),
+          ),
         ],
         child: const MaterialApp(home: QuestionHistoryPage()),
       ),
@@ -313,12 +417,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(question.text), findsOneWidget);
-    expect(find.textContaining('Répondu'), findsOneWidget);
-    expect(find.textContaining('À répondre'), findsNothing);
-    expect(
-      find.text('Vous avez répondu à toutes les questions'),
-      findsOneWidget,
+    expect(find.textContaining('Répondu'), findsNothing);
+    expect(find.byType(ResponseDistribution), findsOneWidget);
+    final distribution = tester.widget<ResponseDistribution>(
+      find.byType(ResponseDistribution),
     );
+    expect(distribution.entries.map((entry) => entry.count), [1, 3, 0, 0]);
+    expect(distribution.entries.every((entry) => entry.label.isEmpty), isTrue);
+    expect(find.textContaining('À répondre'), findsNothing);
+    expect(find.text('Votre participation est complète'), findsOneWidget);
     expect(find.text('1 / 1'), findsOneWidget);
   });
 
@@ -377,7 +484,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
 
-    expect(find.text('Résultats'), findsOneWidget);
+    expect(find.text('Résultats'), findsNothing);
+    expect(find.text('Comparer les pays, sexes et âges'), findsOneWidget);
     expect(find.text('Vote blanc'), findsNothing);
     expect(find.text('Abstention'), findsNothing);
     expect(find.text('3'), findsOneWidget);
@@ -424,6 +532,10 @@ class _SilentStatisticsRepository implements StatisticsRepository {
   /// Emitted once when set; the summary stream stays silent otherwise.
   final QuestionStatistics? summary;
   final _summaries = StreamController<QuestionStatistics?>();
+
+  @override
+  Future<DemographicStatistics> getDemographics(String questionId) async =>
+      const DemographicStatistics({});
 
   @override
   Stream<QuestionStatistics?> watchSummary(String questionId) =>

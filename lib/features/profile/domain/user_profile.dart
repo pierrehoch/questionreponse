@@ -26,6 +26,7 @@ class UserProfile {
     required this.createdAt,
     required this.updatedAt,
     this.photoUrl,
+    this.birthDate,
   });
 
   final String id;
@@ -35,6 +36,7 @@ class UserProfile {
   final String? photoUrl;
   final String country;
   final UserSex sex;
+  final DateTime? birthDate;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -47,6 +49,7 @@ class UserProfile {
       photoUrl: data['photoUrl'] as String?,
       country: data['country']! as String,
       sex: UserSex.fromValue(data['sex']! as String),
+      birthDate: (data['birthDate'] as Timestamp?)?.toDate().toUtc(),
       createdAt: (data['createdAt']! as Timestamp).toDate(),
       updatedAt: (data['updatedAt']! as Timestamp).toDate(),
     );
@@ -58,12 +61,14 @@ class ProfileInput {
     required this.username,
     required this.country,
     required this.sex,
+    required this.birthDate,
     this.photoUrl,
   });
 
   final String username;
   final String country;
   final UserSex sex;
+  final DateTime birthDate;
   final String? photoUrl;
 
   String get normalizedUsername => normalizeUsername(username);

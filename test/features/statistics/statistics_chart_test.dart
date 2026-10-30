@@ -11,6 +11,7 @@ void main() {
 
   Widget chart({
     bool animateVote = false,
+    bool showLive = false,
     QuestionChartType chartType = QuestionChartType.donut,
     List<StatisticEntry> entries = entries,
   }) => MaterialApp(
@@ -21,6 +22,7 @@ void main() {
           chartType: chartType,
           highlightedId: 'a',
           animateVote: animateVote,
+          showLive: showLive,
         ),
       ),
     ),
@@ -57,13 +59,18 @@ void main() {
 
   for (final type in QuestionChartType.values) {
     testWidgets('renders the ${type.key} chart with a legend', (tester) async {
-      await tester.pumpWidget(chart(chartType: type));
+      await tester.pumpWidget(chart(chartType: type, showLive: true));
       await tester.pumpAndSettle();
 
       expect(find.text('Chat'), findsWidgets);
       expect(find.text('75 %  3'), findsOneWidget);
       expect(find.text('25 %  1'), findsOneWidget);
       expect(find.text('4'), findsOneWidget);
+      expect(find.text('● En direct'), findsOneWidget);
+      expect(
+        tester.getCenter(find.text('● En direct')).dy,
+        closeTo(tester.getCenter(find.text('4')).dy, 1),
+      );
       expect(tester.takeException(), isNull);
     });
   }
